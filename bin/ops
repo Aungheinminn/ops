@@ -1,0 +1,17 @@
+#!/usr/bin/env bun
+import { program } from 'commander';
+import { runTUI } from '../src/ui/App.tsx';
+import { parseCLI } from '../src/config/cli.ts';
+
+program
+  .name('ops')
+  .description('Multi-session coding agent CLI with OpenTUI')
+  .version('1.0.0')
+  .option('-d, --dir <path>', 'Working directory', process.cwd())
+  .option('-m, --model <model>', 'Default model to use')
+  .action(async (options) => {
+    const cliOptions = parseCLI();
+    await runTUI({ ...cliOptions, ...options });
+  });
+
+program.parse();
