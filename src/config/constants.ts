@@ -8,6 +8,7 @@ export const KEYBINDINGS = {
   CLOSE_SESSION: 'ctrl+w',
   SWITCH_SESSION: 'ctrl+tab',
   SWITCH_SESSION_PREV: 'ctrl+shift+tab',
+  FOCUS_SESSIONS_SIDEBAR: 'ctrl+s',
   QUIT: 'ctrl+c',
   COMMAND_PALETTE: 'ctrl+p',
   CLEAR: 'ctrl+l',

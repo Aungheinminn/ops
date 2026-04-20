@@ -173,6 +173,93 @@ class SessionStoreClass {
     await data.session.sendUserMessage(content);
   }
 
+  // Handle agent-level commands that need special processing
+  // Returns true if command was handled, false if should be sent as regular message
+  async handleCommand(sessionId: string, command: string, args: string): Promise<boolean> {
+    const data = store.sessions[sessionId];
+    if (!data) return false;
+
+    switch (command) {
+      case 'export': {
+        // Handle export with optional path argument
+        const path = args || `./session-${sessionId}.html`;
+        try {
+          // Note: pi-coding-agent may expose export functionality
+          // For now, add a system message indicating export attempt
+          const systemMsg: Message = {
+            id: ulid(),
+            role: 'agent',
+            content: `📤 Export requested: ${path}`,
+            timestamp: Date.now(),
+          };
+          setStore('sessions', sessionId, 'messages', (messages) => [...messages, systemMsg]);
+          
+          // Send the actual command to agent
+          await data.session.sendUserMessage(`/${command} ${args}`);
+          return true;
+        } catch (err) {
+          console.error('Export failed:', err);
+          return false;
+        }
+      }
+
+      case 'copy': {
+        // Copy last agent message to clipboard
+        const messages = data.messages;
+        const lastAgentMsg = [...messages].reverse().find(m => m.role === 'agent');
+        if (lastAgentMsg) {
+          try {
+            // Try to use native clipboard if available
+            if (typeof process !== 'undefined' && process.platform !== 'win32') {
+              const { execSync } = await import('child_process');
+              execSync('pbcopy', { input: lastAgentMsg.content });
+            }
+            
+            const systemMsg: Message = {
+              id: ulid(),
+              role: 'agent',
+              content: '✓ Copied last message to clipboard',
+              timestamp: Date.now(),
+            };
+            setStore('sessions', sessionId, 'messages', (messages) => [...messages, systemMsg]);
+            return true;
+          } catch {
+            // Clipboard not available - still return true to prevent sending to LLM
+            const systemMsg: Message = {
+              id: ulid(),
+              role: 'agent',
+              content: '⚠ Could not copy to clipboard (clipboard not available)',
+              timestamp: Date.now(),
+            };
+            setStore('sessions', sessionId, 'messages', (messages) => [...messages, systemMsg]);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      case 'name': {
+        // Rename session
+        if (args) {
+          setStore('sessions', sessionId, 'name', args);
+          const systemMsg: Message = {
+            id: ulid(),
+            role: 'agent',
+            content: `✓ Session renamed to: ${args}`,
+            timestamp: Date.now(),
+          };
+          setStore('sessions', sessionId, 'messages', (messages) => [...messages, systemMsg]);
+          return true;
+        }
+        return false;
+      }
+
+      default:
+        // Command not handled here - let it go to agent as regular message
+        return false;
+    }
+  }
+
   switchSession(sessionId: string) {
     if (store.sessions[sessionId]) {
       this.setActiveId(sessionId);
