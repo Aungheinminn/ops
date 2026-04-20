@@ -74,14 +74,34 @@ bun run build
 ```
 src/
 ├── index.tsx              # Entry point
-├── config/                # Configuration
-│   ├── cli.ts            # CLI argument parsing
-│   └── constants.ts      # Default values
-├── core/                  # Core logic
-│   └── SessionStore.ts   # Multi-session management
-└── ui/                    # TUI components
-    ├── App.tsx           # Main application
-    └── components/       # UI components
+├── cli/                   # CLI layer
+│   ├── commands.ts        # Single source of truth for all slash commands
+│   ├── index.ts           # CLI exports
+│   ├── parser.ts          # Unified CLI parsing (commander + zod)
+│   └── types.ts           # CLI type definitions
+├── core/                  # Domain layer
+│   ├── commands.ts        # Session-level command handlers
+│   ├── errors.ts          # Custom error classes
+│   ├── messages.ts        # Message parsing & creation utilities
+│   ├── types.ts           # Shared domain types & type guards
+│   ├── config/
+│   │   └── constants.ts   # App constants
+│   └── session/           # Session management
+│       ├── index.ts       # SessionStore (reduced, focused)
+│       ├── lifecycle.ts   # Session create/cleanup logic
+│       └── types.ts       # Session-specific types
+└── ui/                    # Presentation layer
+    ├── index.tsx          # Main App component (simplified)
+    ├── hooks/
+    │   ├── useCommands.ts # Command parsing utilities
+    │   ├── useKeyboard.ts # Global keyboard handling
+    │   └── useNavigation.ts # Sidebar navigation state
+    └── components/
+        ├── input/
+        │   └── InputBar.tsx  # Text input with autocomplete
+        └── layout/
+            ├── ChatPanel.tsx  # Chat display area
+            └── Sidebar.tsx    # Session list sidebar
 ```
 
 ## License
