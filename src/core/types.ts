@@ -21,6 +21,7 @@ export interface Session {
 
 export interface SessionData extends Session {
   session: import('@mariozechner/pi-coding-agent').AgentSession;
+  services: import('@mariozechner/pi-coding-agent').AgentSessionServices;
   unsubscribe: () => void;
 }
 

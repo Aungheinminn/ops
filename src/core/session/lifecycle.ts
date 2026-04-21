@@ -1,4 +1,4 @@
-import type { AgentSession, AgentSessionEvent } from '@mariozechner/pi-coding-agent';
+import type { AgentSession, AgentSessionEvent, AgentSessionServices } from '@mariozechner/pi-coding-agent';
 import type { SessionData } from '../types.js';
 import { parseMessageStart, parseMessageUpdate, parseToolExecution, isHandledEventType } from '../messages.js';
 import { ulid } from 'ulid';
@@ -8,9 +8,53 @@ export async function createSession(
   name?: string,
   existingSessions: Record<string, SessionData> = {}
 ): Promise<SessionData> {
-  const { createAgentSession } = await import('@mariozechner/pi-coding-agent');
+  const { 
+    createAgentSessionServices, 
+    createAgentSessionFromServices,
+    AuthStorage,
+    SettingsManager,
+    ModelRegistry,
+    readTool,
+    bashTool,
+    editTool,
+    writeTool,
+    grepTool,
+    findTool,
+    lsTool
+  } = await import('@mariozechner/pi-coding-agent');
   
-  const { session } = await createAgentSession({ cwd });
+  // Create services first
+  const authStorage = AuthStorage.create();
+  const settingsManager = SettingsManager.create(cwd);
+  const modelRegistry = ModelRegistry.create(authStorage);
+  
+  const services = await createAgentSessionServices({
+    cwd,
+    authStorage,
+    settingsManager,
+    modelRegistry,
+  });
+  
+  // Create session with services and all coding tools
+  const { SessionManager } = await import('@mariozechner/pi-coding-agent');
+  const sm = SessionManager.create(cwd);
+  
+  // Use all tools for full coding capabilities
+  const tools = [
+    readTool,    // Read file contents
+    bashTool,    // Execute bash commands
+    editTool,    // Edit files (search/replace)
+    writeTool,   // Write new files
+    grepTool,    // Search file contents
+    findTool,    // Find files by pattern
+    lsTool,      // List directory contents
+  ];
+  
+  const { session } = await createAgentSessionFromServices({
+    services,
+    sessionManager: sm,
+    tools, // Enable all coding tools
+  });
   
   const sessionId = ulid();
   const sessionName = name || `Session ${Object.keys(existingSessions).length + 1}`;
@@ -18,6 +62,7 @@ export async function createSession(
   const data: SessionData = {
     id: sessionId,
     session,
+    services,
     name: sessionName,
     cwd,
     lastActivity: Date.now(),

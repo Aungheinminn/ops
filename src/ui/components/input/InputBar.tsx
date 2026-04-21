@@ -103,7 +103,12 @@ export function InputBar(props: InputBarProps) {
     const text = textarea?.plainText ?? "";
     if (text.trim()) {
       props.onSubmit(text);
-      textarea?.setText("");
+      // Check if textarea still exists before clearing (component may have been unmounted)
+      try {
+        textarea?.setText("");
+      } catch {
+        // Textarea was destroyed, ignore
+      }
       setState({
         showCommands: false,
         lineCount: 3,

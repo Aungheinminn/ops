@@ -129,6 +129,14 @@ class SessionStoreClass {
     return false;
   }
   
+  addMessage(sessionId: string, message: Message): void {
+    const data = store.sessions[sessionId];
+    if (!data) return;
+    
+    setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
+    setStore('sessions', sessionId, 'lastActivity', Date.now());
+  }
+  
   cleanupInactive(timeout: number = 30 * 60 * 1000): void {
     const now = Date.now();
     for (const [id, data] of Object.entries(store.sessions)) {
