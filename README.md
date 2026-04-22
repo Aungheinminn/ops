@@ -48,6 +48,44 @@ bun run build
 ./bin/ops --dir /path/to/project --model claude-3-5-sonnet
 ```
 
+## Configuration
+
+### API Keys
+
+API keys can be configured in three ways (in priority order):
+
+1. **Environment Variables** (highest priority):
+   ```bash
+   export ANTHROPIC_API_KEY=sk-ant-...
+   export OPENAI_API_KEY=sk-...
+   export GOOGLE_API_KEY=AIzaSyC...
+   export GROQ_API_KEY=gsk_...
+   export OPENCODEGO_API_KEY=sk-opencode-...
+   ./bin/ops
+   ```
+
+2. **Interactive Login** (type `/login` in the app):
+   - Use the `/login` command to enter API keys interactively
+   - Keys are stored in `~/.pi/agent/auth.json`
+   - Shared with other pi-coding-agent tools (like `pi` CLI)
+
+3. **Auth File Location**:
+   - Default: `~/.pi/agent/auth.json`
+   - Override: Set `OPS_AGENT_DIR` environment variable
+   ```bash
+   export OPS_AGENT_DIR=/custom/path
+   ./bin/ops
+   ```
+
+### Model Configuration
+
+Models are configured in `~/.pi/agent/models.json`. You can customize:
+- Available models
+- Provider-specific settings
+- Custom model endpoints
+
+Use `/model` command to switch between available models.
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |

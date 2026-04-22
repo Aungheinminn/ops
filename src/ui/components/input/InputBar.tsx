@@ -7,6 +7,7 @@ import { getAutocompleteCommands } from '../../../cli/commands.js';
 
 interface InputBarProps {
   onSubmit: (text: string) => void;
+  currentModel?: { id: string };
 }
 
 const SLASH_COMMANDS = getAutocompleteCommands();
@@ -103,12 +104,9 @@ export function InputBar(props: InputBarProps) {
     const text = textarea?.plainText ?? "";
     if (text.trim()) {
       props.onSubmit(text);
-      // Check if textarea still exists before clearing (component may have been unmounted)
       try {
         textarea?.setText("");
-      } catch {
-        // Textarea was destroyed, ignore
-      }
+      } catch {}
       setState({
         showCommands: false,
         lineCount: 3,
@@ -256,6 +254,10 @@ export function InputBar(props: InputBarProps) {
             {modeName()}
           </span>
           <span style={{ fg: Colors.muted }}> (Tab to toggle)</span>
+          <Show when={props.currentModel}>
+            <span style={{ fg: Colors.muted }}> | Model: </span>
+            <span style={{ fg: Colors.primary }}>{props.currentModel?.id}</span>
+          </Show>
         </text>
       </box>
     </box>

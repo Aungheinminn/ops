@@ -52,8 +52,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [activeCategory, setActiveCategory] = createSignal<SettingsCategory>('general');
   const [selectedIndices, setSelectedIndices] = createSignal<Record<string, number>>({});
   const [savedSettings, setSavedSettings] = createSignal<Set<string>>(new Set());
-  
-  // Get current settings
+
   const currentSettings = createMemo(() => ({
     thinkingLevel: props.settingsManager.getDefaultThinkingLevel() || 'medium',
     theme: props.settingsManager.getTheme() || 'dark',
@@ -61,17 +60,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
     steeringMode: props.settingsManager.getSteeringMode() || 'one-at-a-time',
     followUpMode: props.settingsManager.getFollowUpMode() || 'one-at-a-time',
   }));
-  
+
   const getOptionIndex = (options: SettingOption[], currentId: string): number => {
     const idx = options.findIndex(o => o.id === currentId);
     return idx >= 0 ? idx : 0;
   };
-  
+
   const handleSelect = (settingKey: string, options: SettingOption[], index: number) => {
     const option = options[index];
     if (!option) return;
-    
-    // Update the setting
+
     switch (settingKey) {
       case 'thinkingLevel':
         props.settingsManager.setDefaultThinkingLevel(option.id as any);
@@ -89,30 +87,26 @@ export function SettingsDialog(props: SettingsDialogProps) {
         props.settingsManager.setFollowUpMode(option.id as any);
         break;
     }
-    
-    // Mark as saved
+
     setSavedSettings(prev => new Set([...prev, settingKey]));
-    
-    // Update selected index
     setSelectedIndices(prev => ({ ...prev, [settingKey]: index }));
   };
-  
+
   const handleKey = (e: KeyEvent) => {
     const name = e.name?.toLowerCase();
-    
+
     if (name === 'escape') {
       props.onCancel();
       e.preventDefault();
       return;
     }
-    
+
     if (name === 'return') {
       props.onComplete();
       e.preventDefault();
       return;
     }
-    
-    // Tab to switch categories
+
     if (name === 'tab') {
       const currentIdx = CATEGORIES.findIndex(c => c.id === activeCategory());
       const nextIdx = (currentIdx + 1) % CATEGORIES.length;
@@ -120,7 +114,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       e.preventDefault();
     }
   };
-  
+
   const renderSetting = (
     label: string,
     key: string,
@@ -130,7 +124,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     const currentIndex = getOptionIndex(options, currentValue);
     const selectedIdx = selectedIndices()[key] ?? currentIndex;
     const isSaved = savedSettings().has(key);
-    
+
     return (
       <box flexDirection="column" marginBottom={1}>
         <text>
@@ -139,7 +133,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             {isSaved && <span style={{ fg: Colors.success }}> ✓</span>}
           </span>
         </text>
-        
+
         <box flexDirection="row" gap={2} flexWrap="wrap">
           <Index each={options}>
             {(option, index) => {
@@ -174,7 +168,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             }}
           </Index>
         </box>
-        
+
         <text>
           <span style={{ fg: Colors.muted, dim: true }}>
             {options[selectedIdx]?.description}
@@ -183,7 +177,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       </box>
     );
   };
-  
+
   return (
     <box
       height={20}
@@ -201,10 +195,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
           ⚙️ Settings
         </span>
       </text>
-      
+
       <box height={1} />
-      
-      {/* Category Tabs */}
+
       <box flexDirection="row" gap={2}>
         <Index each={CATEGORIES}>
           {(category) => {
@@ -239,10 +232,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
           }}
         </Index>
       </box>
-      
+
       <box height={1} />
-      
-      {/* Settings Content */}
+
       <box flexDirection="column" flexGrow={1}>
         <Show when={activeCategory() === 'general'}>
           {renderSetting(
@@ -251,7 +243,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             THINKING_LEVELS,
             currentSettings().thinkingLevel
           )}
-          
+
           {renderSetting(
             'Theme',
             'theme',
@@ -259,7 +251,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             currentSettings().theme
           )}
         </Show>
-        
+
         <Show when={activeCategory() === 'behavior'}>
           {renderSetting(
             'Transport',
@@ -267,14 +259,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
             TRANSPORTS,
             currentSettings().transport
           )}
-          
+
           {renderSetting(
             'Steering Mode',
             'steeringMode',
             MESSAGE_MODES,
             currentSettings().steeringMode
           )}
-          
+
           {renderSetting(
             'Follow-up Mode',
             'followUpMode',
@@ -282,7 +274,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             currentSettings().followUpMode
           )}
         </Show>
-        
+
         <Show when={activeCategory() === 'display'}>
           <text>
             <span style={{ fg: Colors.muted }}>
@@ -291,10 +283,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </text>
         </Show>
       </box>
-      
+
       <box flexGrow={1} />
-      
-      {/* Instructions */}
+
       <box flexDirection="row" gap={2}>
         <text>
           <span style={{ fg: Colors.muted, dim: true }}>

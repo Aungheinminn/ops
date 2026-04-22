@@ -84,16 +84,60 @@ export function hasText(msg: unknown): msg is { text: string } {
          typeof (msg as { text: unknown }).text === 'string';
 }
 
+export interface ContentItem {
+  type?: string;
+  text?: string;
+  thinking?: string;
+  toolUse?: unknown;
+  toolResult?: unknown;
+}
+
 export function extractMessageContent(msg: unknown): string {
   if (typeof msg === 'string') {
     return msg;
   }
-  if (hasContent(msg)) {
-    return msg.content;
+  
+  if (msg && typeof msg === 'object') {
+    // Handle content array (pi-coding-agent format)
+    if ('content' in msg) {
+      const content = (msg as { content: unknown }).content;
+      
+      // If content is a string, return it directly
+      if (typeof content === 'string') {
+        return content;
+      }
+      
+      // If content is an array, extract from each item
+      if (Array.isArray(content)) {
+        return content.map((item: ContentItem) => {
+          if (typeof item === 'string') return item;
+          
+          // Handle text content
+          if (item.type === 'text' && item.text) {
+            return item.text;
+          }
+          
+          // Handle thinking content
+          if (item.type === 'thinking' && item.thinking) {
+            return item.thinking;
+          }
+          
+          // Handle plain text field
+          if (item.text) {
+            return item.text;
+          }
+          
+          return '';
+        }).join('');
+      }
+    }
+    
+    // Handle direct text field
+    if (hasText(msg)) {
+      return msg.text;
+    }
   }
-  if (hasText(msg)) {
-    return msg.text;
-  }
+  
   return '';
 }
 

@@ -9,7 +9,6 @@ interface ApiKeyDialogProps {
   onCancel: () => void;
 }
 
-// Supported providers for API key authentication
 const PROVIDERS = [
   { id: 'anthropic', name: 'Anthropic (Claude)', placeholder: 'sk-ant-api03-...' },
   { id: 'openai', name: 'OpenAI (GPT)', placeholder: 'sk-...' },
@@ -27,16 +26,15 @@ type ProviderId = typeof PROVIDERS[number]['id'];
 export function ApiKeyDialog(props: ApiKeyDialogProps) {
   let boxRef: { focus(): void } | undefined;
   let textareaRef: TextareaRenderable | undefined;
-  
+
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [apiKey, setApiKey] = createSignal('');
   const [error, setError] = createSignal('');
   const [success, setSuccess] = createSignal('');
   const [step, setStep] = createSignal<'provider' | 'key'>('provider');
-  
+
   const selectedProvider = createMemo(() => PROVIDERS[selectedIndex()]);
 
-  // Auto-focus the box when in provider step
   createEffect(() => {
     if (step() === 'provider') {
       setTimeout(() => {
@@ -45,7 +43,6 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
     }
   });
 
-  // Auto-focus textarea when entering key step
   createEffect(() => {
     if (step() === 'key') {
       setTimeout(() => {
@@ -59,32 +56,28 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
       setStep('key');
       return;
     }
-    
-    // Read the API key from the textarea ref
+
     const key = textareaRef?.plainText?.trim() ?? apiKey().trim();
-    
+
     if (!key) {
       setError('Please enter an API key');
       return;
     }
-    
-    // Basic validation
+
     if (key.length < 10) {
       setError('API key seems too short');
       return;
     }
-    
+
     try {
-      // Save to auth storage
       props.authStorage.set(selectedProvider().id, {
         type: 'api_key',
         key: key,
       });
-      
+
       setSuccess(`API key saved for ${selectedProvider().name}`);
       setError('');
-      
-      // Close after brief delay to show success
+
       setTimeout(() => {
         props.onComplete(true);
       }, 800);
@@ -92,16 +85,15 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
       setError(err instanceof Error ? err.message : 'Failed to save API key');
     }
   };
-  
+
   const handleKey = (e: KeyEvent) => {
     const name = e.name?.toLowerCase();
-    
+
     if (name === 'escape') {
       if (step() === 'key') {
         setStep('provider');
         setApiKey('');
         setError('');
-        // Clear textarea
         if (textareaRef) {
           textareaRef.setText('');
         }
@@ -112,7 +104,7 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
       e.preventDefault();
       return;
     }
-    
+
     if (step() === 'provider') {
       if (name === 'up') {
         setSelectedIndex(i => (i > 0 ? i - 1 : PROVIDERS.length - 1));
@@ -126,7 +118,7 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
       }
     }
   };
-  
+
   return (
     <box
       ref={(r) => { boxRef = r as { focus(): void }; }}
@@ -142,19 +134,19 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
     >
       <text>
         <span style={{ bold: true, fg: Colors.primary }}>
-          🔐 Login with API Key
+          Login with API Key
         </span>
       </text>
-      
+
       <box height={1} />
-      
+
       <Show when={step() === 'provider'}>
         <text>
           <span style={{ fg: Colors.muted }}>Select a provider (use ↑↓ arrows, Enter to confirm):</span>
         </text>
-        
+
         <box height={1} />
-        
+
         <box flexDirection="column">
           <Index each={PROVIDERS}>
             {(provider, index) => (
@@ -164,9 +156,9 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
                 backgroundColor={selectedIndex() === index ? Colors.primaryDark : undefined}
               >
                 <text>
-                  <span style={{ 
+                  <span style={{
                     fg: selectedIndex() === index ? Colors.white : Colors.light,
-                    bold: selectedIndex() === index 
+                    bold: selectedIndex() === index
                   }}>
                     {selectedIndex() === index ? '→ ' : '  '}
                     {provider().name}
@@ -177,16 +169,16 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
           </Index>
         </box>
       </Show>
-      
+
       <Show when={step() === 'key'}>
         <text>
           <span style={{ fg: Colors.muted }}>
             Enter API key for {selectedProvider().name}:
           </span>
         </text>
-        
+
         <box height={1} />
-        
+
         <textarea
           ref={(r) => { textareaRef = r as TextareaRenderable; }}
           placeholder={selectedProvider().placeholder}
@@ -197,35 +189,34 @@ export function ApiKeyDialog(props: ApiKeyDialogProps) {
           onSubmit={handleSubmit}
           onKeyDown={handleKey}
         />
-        
+
         <box height={1} />
-        
+
         <text>
           <span style={{ fg: Colors.muted, dim: true }}>
             Enter to save, Esc to go back
           </span>
         </text>
       </Show>
-      
-      {/* Error/Success Messages */}
+
       <Show when={error()}>
         <text>
           <span style={{ fg: Colors.error }}>
-            ❌ {error()}
+            {error()}
           </span>
         </text>
       </Show>
-      
+
       <Show when={success()}>
         <text>
           <span style={{ fg: Colors.success }}>
-            ✅ {success()}
+            {success()}
           </span>
         </text>
       </Show>
-      
+
       <box flexGrow={1} />
-      
+
       <text>
         <span style={{ fg: Colors.muted, dim: true }}>
           Your API key will be stored in ~/.pi/agent/auth.json

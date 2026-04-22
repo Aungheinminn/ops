@@ -4,6 +4,7 @@ import type { SessionStoreState, SessionListItem } from './types.js';
 import { createSession, createEventHandler, cleanupSession } from './lifecycle.js';
 import { createUserMessage } from '../messages.js';
 import { hasSessionHandler, getSessionHandler } from '../commands.js';
+import { log, logError } from '../logger.js';
 
 const [store, setStore] = createStore<SessionStoreState>({
   sessions: {},
@@ -29,15 +30,19 @@ class SessionStoreClass {
   
   async createSession(cwd: string, name?: string): Promise<string> {
     const data = await createSession(cwd, name, store.sessions);
+    log(`Session created, model: ${data.session.model?.id || 'none'}`);
     
     const handler = createEventHandler(data.id, {
       onLoadingChange: (loading) => {
+        log(`onLoadingChange: ${loading}`);
         setStore('sessions', data.id, 'isLoading', loading);
       },
       onMessageAdd: (message) => {
+        log(`onMessageAdd: ${message.role} ${message.content.slice(0, 50)}`);
         setStore('sessions', data.id, 'messages', (messages) => [...messages, message]);
       },
       onMessageUpdate: (content) => {
+        log(`onMessageUpdate, content length: ${content.length}`);
         setStore('sessions', data.id, 'messages', produce((messages: Message[]) => {
           const lastMsg = messages[messages.length - 1];
           if (lastMsg && lastMsg.role === 'agent') {
@@ -46,6 +51,7 @@ class SessionStoreClass {
         }));
       },
       onMessageComplete: () => {
+        log('onMessageComplete');
         setStore('sessions', data.id, 'messages', produce((messages: Message[]) => {
           const msg = messages[messages.length - 1];
           if (msg) {
@@ -59,6 +65,7 @@ class SessionStoreClass {
     });
     
     data.unsubscribe = data.session.subscribe(handler);
+    log('Subscribed to session events');
     setStore('sessions', data.id, data);
     this.setActiveId(data.id);
     
@@ -93,13 +100,40 @@ class SessionStoreClass {
   
   async sendMessage(sessionId: string, content: string): Promise<void> {
     const data = store.sessions[sessionId];
-    if (!data) return;
+    if (!data) {
+      log('sendMessage: no session data');
+      return;
+    }
+    
+    log(`sendMessage: ${content}`);
+    log(`Session model: ${data.session.model?.id || 'none'}`);
+    
+    // Check if model is selected
+    if (!data.session.model) {
+      log('No model selected, showing error');
+      const errorMessage: Message = {
+        id: `system-${Date.now()}`,
+        role: 'agent',
+        content: '⚠️ No model selected.\n\nPlease either:\n1. Use /model to select a model\n2. Set an API key environment variable (ANTHROPIC_API_KEY, OPENCODEGO_API_KEY, etc.)\n3. Use /login to save API keys to ~/.pi/agent/auth.json',
+        timestamp: Date.now(),
+        isStreaming: false,
+      };
+      setStore('sessions', sessionId, 'messages', (messages) => [...messages, errorMessage]);
+      return;
+    }
     
     const message = createUserMessage(content);
+    log('Adding user message to store');
     setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
     setStore('sessions', sessionId, 'lastActivity', Date.now());
     
-    await data.session.sendUserMessage(content);
+    log('Calling session.sendUserMessage...');
+    try {
+      await data.session.sendUserMessage(content);
+      log('sendUserMessage completed');
+    } catch (err) {
+      logError('sendUserMessage error', err);
+    }
   }
   
   async handleCommand(sessionId: string, command: string, args: string): Promise<boolean> {

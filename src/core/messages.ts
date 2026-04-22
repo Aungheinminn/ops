@@ -36,13 +36,46 @@ export function createAgentMessage(content: string, isStreaming = false): Messag
   };
 }
 
-export function parseMessageStart(event: AgentSessionEvent): Message {
+export function parseMessageStart(event: AgentSessionEvent): Message | null {
   const msg = 'message' in event ? (event as { message: unknown }).message : undefined;
+  
+  // Check if this is an assistant message (not user message)
+  if (msg && typeof msg === 'object' && 'role' in msg) {
+    const role = (msg as { role: string }).role;
+    // Skip user messages (we already added them when sending)
+    if (role === 'user') {
+      return null;
+    }
+  }
+  
   const content = extractMessageContent(msg);
   return createAgentMessage(content, true);
 }
 
 export function parseMessageUpdate(event: AgentSessionEvent): string {
+  // Handle assistantMessageEvent format (thinking updates, delta updates)
+  if ('assistantMessageEvent' in event) {
+    const assistantEvent = (event as { assistantMessageEvent: unknown }).assistantMessageEvent;
+    if (assistantEvent && typeof assistantEvent === 'object') {
+      // Handle delta updates (incremental content)
+      if ('delta' in assistantEvent && typeof assistantEvent.delta === 'string') {
+        return assistantEvent.delta;
+      }
+      
+      // Handle partial message updates
+      if ('partial' in assistantEvent) {
+        return extractMessageContent(assistantEvent.partial);
+      }
+      
+      // Try to extract content directly from assistantMessageEvent
+      const content = extractMessageContent(assistantEvent);
+      if (content) {
+        return content;
+      }
+    }
+  }
+  
+  // Fallback to old logic - extract from message field
   const msg = 'message' in event ? (event as { message: unknown }).message : undefined;
   return extractMessageContent(msg);
 }

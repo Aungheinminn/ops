@@ -17,24 +17,23 @@ export interface KeyboardConfig {
   onSidebarNavigate?: (direction: 'up' | 'down') => void;
   onSidebarSelect?: () => void;
   onSidebarDefocus?: () => void;
+  onDialogNavigate?: (direction: 'up' | 'down') => void;
 }
 
 export function useKeyboard(config: KeyboardConfig): void {
   useOpenTUIKeyboard((e: KeyEvent) => {
     if (e.eventType !== 'press') return;
-    
-    // Handle dialog focus first (Escape/Enter to close)
+
     if (config.dialogFocused?.() && !e.ctrl) {
       const handled = handleDialogKeys(e, config);
       if (handled) return;
-      // Otherwise, let the event propagate to the dialog's onKeyDown
     }
-    
+
     if (config.sidebarFocused?.() && !e.ctrl) {
       handleSidebarKeys(e, config);
       return;
     }
-    
+
     if (e.ctrl) {
       handleGlobalKeys(e, config);
     }
@@ -45,10 +44,6 @@ function handleDialogKeys(e: KeyEvent, config: KeyboardConfig): boolean {
   switch (e.name) {
     case 'escape':
       config.onEscape?.();
-      e.preventDefault();
-      return true;
-    case 'return':
-      config.onEnter?.();
       e.preventDefault();
       return true;
     default:
