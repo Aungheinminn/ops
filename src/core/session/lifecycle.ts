@@ -1,9 +1,16 @@
+/**
+ * Session Lifecycle - Updated with new event handling system
+ */
+
 import type { AgentSession, AgentSessionEvent, AgentSessionServices } from '@mariozechner/pi-coding-agent';
 import type { SessionData } from '../types.js';
-import { parseMessageStart, parseMessageUpdate, parseToolExecution, isHandledEventType } from '../messages.js';
 import { authStorage, modelRegistry, agentDir } from '../config.js';
 import { ulid } from 'ulid';
-import { log, logError, logObject } from '../logger.js';
+import { log, logError } from '../logger.js';
+import { createEventHandler as createNewEventHandler } from '../events/handlers.ts';
+import type { EventHandlerContext } from '../events/types.ts';
+import { getOrCreateMessageStore } from '../messages/store.ts';
+import type { MessageStore } from '../messages/store.ts';
 
 export async function createSession(
   cwd: string,
@@ -11,10 +18,10 @@ export async function createSession(
   existingSessions: Record<string, SessionData> = {}
 ): Promise<SessionData> {
   log(`createSession called: ${cwd} ${name || ''}`);
-  
+
   try {
-    const { 
-      createAgentSessionServices, 
+    const {
+      createAgentSessionServices,
       createAgentSessionFromServices,
       SettingsManager,
       SessionManager,
@@ -26,13 +33,13 @@ export async function createSession(
       findTool,
       lsTool
     } = await import('@mariozechner/pi-coding-agent');
-    
+
     log('pi-coding-agent imported');
-    
+
     // Create settings manager
     const settingsManager = SettingsManager.create(cwd);
     log('SettingsManager created');
-    
+
     // Use shared authStorage and modelRegistry from config module
     log('Creating AgentSessionServices...');
     const services = await createAgentSessionServices({
@@ -43,12 +50,12 @@ export async function createSession(
       agentDir,      // Pass agentDir for extensions/themes
     });
     log('AgentSessionServices created');
-    
+
     // Create session with services and all coding tools
     log('Creating SessionManager...');
     const sm = SessionManager.create(cwd);
     log('SessionManager created');
-    
+
     // Use all tools for full coding capabilities
     const tools = [
       readTool,    // Read file contents
@@ -59,7 +66,7 @@ export async function createSession(
       findTool,    // Find files by pattern
       lsTool,      // List directory contents
     ];
-    
+
     log('Creating AgentSession from services...');
     const { session } = await createAgentSessionFromServices({
       services,
@@ -67,7 +74,7 @@ export async function createSession(
       tools, // Enable all coding tools
     });
     log('AgentSession created');
-    
+
     // Auto-select first available model
     const availableModels = modelRegistry.getAvailable();
     if (availableModels.length > 0) {
@@ -79,11 +86,14 @@ export async function createSession(
       log(`Available providers: ${authStorage.list().join(', ')}`);
       log(`All models count: ${modelRegistry.getAll().length}`);
     }
-    
+
     const sessionId = ulid();
     const sessionName = name || `Session ${Object.keys(existingSessions).length + 1}`;
-    
-    const data: SessionData = {
+
+    // Create message store for this session (uses registry to ensure same instance everywhere)
+    const messageStore = getOrCreateMessageStore(sessionId);
+
+    const data: SessionData & { messageStore: MessageStore } = {
       id: sessionId,
       session,
       services,
@@ -93,8 +103,9 @@ export async function createSession(
       messages: [],
       unsubscribe: () => {},
       isLoading: false,
+      messageStore,
     };
-    
+
     log('Session data created, returning');
     return data;
   } catch (err) {
@@ -103,65 +114,72 @@ export async function createSession(
   }
 }
 
+export interface EventHandlerCallbacks {
+  onLoadingChange: (loading: boolean) => void;
+  onActivity: () => void;
+  onMessageStoreUpdate?: (messageStore: MessageStore) => void;
+}
+
+export function createSessionEventHandler(
+  sessionId: string,
+  callbacks: EventHandlerCallbacks
+): (event: AgentSessionEvent) => void {
+  // Get or create message store for this session
+  const messageStore = getOrCreateMessageStore(sessionId);
+
+  // Create the event handler context
+  const context: EventHandlerContext = {
+    onLoadingChange: callbacks.onLoadingChange,
+    onActivity: callbacks.onActivity,
+    messageStore: {
+      startMessage: (msgId: string, role: 'assistant', timestamp: number) => messageStore.startMessage(msgId, role, timestamp),
+      addContentBlock: (msgId: string, block: unknown) => messageStore.addContentBlock(msgId, block as import('../messages/types.ts').ContentBlock),
+      updateContentBlock: (msgId: string, idx: number, delta: string) => messageStore.updateContentBlock(msgId, idx, delta),
+      finalizeContentBlock: (msgId: string, idx: number) => messageStore.finalizeContentBlock(msgId, idx),
+      completeMessage: (msgId: string) => messageStore.completeMessage(msgId),
+      addToolExecution: (toolId: string, name: string, args: unknown) => messageStore.addToolExecution(toolId, name, args),
+      updateToolExecution: (toolId: string, result: unknown) => messageStore.updateToolExecution(toolId, result),
+      completeToolExecution: (toolId: string, result: unknown, isError: boolean) => messageStore.completeToolExecution(toolId, result, isError),
+      getCurrentMessageId: () => messageStore.getCurrentMessageId(),
+      getMessageByContentIndex: (_contentIndex: number) => undefined, // Not implemented in store
+    },
+  };
+
+  // Notify about initial store
+  if (callbacks.onMessageStoreUpdate) {
+    callbacks.onMessageStoreUpdate(messageStore);
+  }
+
+  // Create and return the event handler
+  return createNewEventHandler(context);
+}
+
+/**
+ * @deprecated Use createSessionEventHandler instead
+ */
 export function createEventHandler(
   _sessionId: string,
   callbacks: {
     onLoadingChange: (loading: boolean) => void;
     onMessageAdd: (message: import('../types.js').Message) => void;
-    onMessageUpdate: (content: string) => void;
+    onMessageUpdate: (result: { content: string; isDelta: boolean }) => void;
     onMessageComplete: () => void;
     onActivity: () => void;
   }
 ): (event: AgentSessionEvent) => void {
+  // Legacy handler - wraps new system for backwards compatibility
   return (event: AgentSessionEvent) => {
-    log(`Agent event: ${event.type} ${JSON.stringify(event).slice(0, 300)}`);
     callbacks.onActivity();
-    
-    if (!isHandledEventType(event.type)) {
-      log(`Event type not handled: ${event.type}`);
-      return;
-    }
-    
+
+    // Simple mapping for backwards compatibility
     switch (event.type) {
       case 'agent_start':
-        log('Agent started');
         callbacks.onLoadingChange(true);
         break;
       case 'agent_end':
-        log('Agent ended');
         callbacks.onLoadingChange(false);
         break;
-      case 'message_start': {
-        log('Message started');
-        const message = parseMessageStart(event);
-        if (message) {
-          log(`Parsed message: ${JSON.stringify(message).slice(0, 200)}`);
-          callbacks.onMessageAdd(message);
-        } else {
-          log('Skipping user message (already in store)');
-        }
-        break;
-      }
-      case 'message_update': {
-        const content = parseMessageUpdate(event);
-        log(`Message update, content length: ${content.length}`);
-        callbacks.onMessageUpdate(content);
-        break;
-      }
-      case 'message_end':
-        log('Message ended');
-        callbacks.onMessageComplete();
-        break;
-      case 'tool_execution_start': {
-        log('Tool execution started');
-        const message = parseToolExecution(event);
-        if (message) {
-          callbacks.onMessageAdd(message);
-        }
-        break;
-      }
-      default:
-        log(`Unhandled event type: ${event.type}`);
+      // Other events handled by new system
     }
   };
 }
@@ -171,5 +189,11 @@ export function cleanupSession(session: SessionData): void {
     session.unsubscribe();
   } catch {
     // Ignore
+  }
+  // Clean up message store
+  const sessionWithStore = session as SessionData & { messageStore?: MessageStore };
+  if (sessionWithStore.messageStore) {
+    // Keep store for now (allows viewing history after close)
+    // Could be cleaned up here if memory is a concern
   }
 }

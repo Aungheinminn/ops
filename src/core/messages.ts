@@ -52,32 +52,37 @@ export function parseMessageStart(event: AgentSessionEvent): Message | null {
   return createAgentMessage(content, true);
 }
 
-export function parseMessageUpdate(event: AgentSessionEvent): string {
+export interface MessageUpdateResult {
+  content: string;
+  isDelta: boolean;
+}
+
+export function parseMessageUpdate(event: AgentSessionEvent): MessageUpdateResult {
   // Handle assistantMessageEvent format (thinking updates, delta updates)
   if ('assistantMessageEvent' in event) {
     const assistantEvent = (event as { assistantMessageEvent: unknown }).assistantMessageEvent;
     if (assistantEvent && typeof assistantEvent === 'object') {
-      // Handle delta updates (incremental content)
+      // Handle delta updates (incremental content) - these should be appended
       if ('delta' in assistantEvent && typeof assistantEvent.delta === 'string') {
-        return assistantEvent.delta;
+        return { content: assistantEvent.delta, isDelta: true };
       }
       
-      // Handle partial message updates
+      // Handle partial message updates - these are full replacements
       if ('partial' in assistantEvent) {
-        return extractMessageContent(assistantEvent.partial);
+        return { content: extractMessageContent(assistantEvent.partial), isDelta: false };
       }
       
-      // Try to extract content directly from assistantMessageEvent
+      // Try to extract content directly from assistantMessageEvent - full replacements
       const content = extractMessageContent(assistantEvent);
       if (content) {
-        return content;
+        return { content, isDelta: false };
       }
     }
   }
   
-  // Fallback to old logic - extract from message field
+  // Fallback to old logic - extract from message field - full replacements
   const msg = 'message' in event ? (event as { message: unknown }).message : undefined;
-  return extractMessageContent(msg);
+  return { content: extractMessageContent(msg), isDelta: false };
 }
 
 export function parseToolExecution(event: AgentSessionEvent): Message | null {

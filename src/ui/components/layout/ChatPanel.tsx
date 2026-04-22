@@ -1,27 +1,12 @@
-import { For, Show } from 'solid-js';
-import type { SessionData, Message } from '../../../core/types.js';
+import { Show, createMemo, createEffect, on } from 'solid-js';
+import type { SessionData } from '../../../core/types.js';
 import { Colors } from '../../../core/types.js';
+import { SessionStore } from '../../../core/session/index.ts';
+import { MessageList } from '../messages/MessageList.tsx';
+import type { ScrollBoxRenderable } from '@opentui/core';
 
 interface ChatPanelProps {
   session?: SessionData;
-}
-
-function MessageBubble(props: { message: Message }) {
-  const isUser = () => props.message.role === 'user';
-  
-  return (
-    <box flexDirection="column" padding={1}>
-      <text>
-        <span style={{ bold: true, fg: isUser() ? Colors.primary : Colors.success }}>
-          {isUser() ? "You" : "Agent"}
-        </span>
-        {props.message.isStreaming && <span style={{ fg: "gray" }}> ◌</span>}
-      </text>
-      <box paddingLeft={2}>
-        <text>{props.message.content}</text>
-      </box>
-    </box>
-  );
 }
 
 function EmptyState() {
@@ -35,13 +20,55 @@ function EmptyState() {
 }
 
 export function ChatPanel(props: ChatPanelProps) {
+  const messageStore = createMemo(() => {
+    if (!props.session) return undefined;
+    return SessionStore.getMessageStore(props.session.id);
+  });
+
+  const messages = createMemo(() => messageStore()?.messages ?? []);
+  let scrollboxRef: ScrollBoxRenderable | undefined;
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      if (!scrollboxRef) return;
+      scrollboxRef.scrollTo(scrollboxRef.scrollHeight);
+    }, 50);
+  };
+
+  createEffect(() => {
+    const msgs = messages();
+    const lastMsg = msgs[msgs.length - 1];
+    const contentLength = lastMsg?.content.reduce((acc, block) => {
+      if ('content' in block && typeof block.content === 'string') {
+        return acc + block.content.length;
+      }
+      return acc;
+    }, 0) ?? 0;
+    
+    if (contentLength > 0 && scrollboxRef) {
+      scrollToBottom();
+    }
+  });
+
+  createEffect(on(
+    () => messages().length,
+    (count, prevCount) => {
+      if (count > (prevCount ?? 0)) {
+        scrollToBottom();
+      }
+    }
+  ));
+
   return (
     <box flexGrow={1} flexDirection="column">
       <Show when={props.session} fallback={<EmptyState />}>
-        <scrollbox flexGrow={1}>
-          <For each={props.session!.messages}>
-            {(message) => <MessageBubble message={message} />}
-          </For>
+        <scrollbox 
+          flexGrow={1}
+          ref={(r: ScrollBoxRenderable) => { scrollboxRef = r; }}
+          stickyScroll={true}
+          stickyStart="bottom"
+        >
+          <MessageList messages={messages()} />
         </scrollbox>
       </Show>
     </box>
