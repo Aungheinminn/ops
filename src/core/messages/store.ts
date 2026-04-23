@@ -199,6 +199,7 @@ export function createMessageStore(): MessageStore {
     },
 
     finalizeContentBlock(messageId: string, contentIndex: number): void {
+      log(`Finalizing content block: ${messageId}[${contentIndex}]`);
       setState('messages', produce((messages: RichMessage[]) => {
         const message = messages.find(m => m.id === messageId);
         if (!message) return;

@@ -69,7 +69,9 @@ export function ChatPanel(props: ChatPanelProps) {
           stickyStart="bottom"
           focusable={false}
         >
-          <MessageList messages={messages()} />
+          <box paddingRight={2}>
+            <MessageList messages={messages()} />
+          </box>
         </scrollbox>
       </Show>
     </box>

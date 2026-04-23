@@ -28,26 +28,29 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
   };
 
   const content = formatContent();
-  const lineCount = content.split('\n').length;
-  const border = Array(lineCount).fill('│').join('\n');
 
   return (
-    <box flexDirection="row" marginY={1}>
-      <text style={{ fg: Colors.border }}>{border}</text>
-      <box paddingLeft={1} flexGrow={1} flexDirection="column">
-        <box flexDirection="row">
-          <text>{getIcon()}</text>
-          <box paddingLeft={1}>
-            <text>
-              <span style={{ fg: Colors.light, bold: true }}>{props.block.name}</span>
-            </text>
-          </box>
-        </box>
-        <box paddingTop={1}>
-          <text style={{ fg: Colors.light }}>
-            {content}
+    <box 
+      flexDirection="column" 
+      marginY={1}
+      border={['left']}
+      borderStyle="single"
+      borderColor={Colors.border}
+      paddingLeft={1}
+      paddingRight={1}
+    >
+      <box flexDirection="row">
+        <text>{getIcon()}</text>
+        <box paddingLeft={1}>
+          <text>
+            <span style={{ fg: Colors.light, bold: true }}>{props.block.name}</span>
           </text>
         </box>
+      </box>
+      <box paddingTop={1}>
+        <text style={{ fg: Colors.light }}>
+          {content}
+        </text>
       </box>
     </box>
   );

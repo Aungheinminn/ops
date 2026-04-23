@@ -206,6 +206,11 @@ function handleStreamingEvent(event: RoutedEvent, ctx: EventHandlerContext): voi
 
     case 'done': {
       log('Message streaming completed successfully');
+      // Mark the current message as complete
+      const doneCurrentId = ctx.messageStore.getCurrentMessageId();
+      if (doneCurrentId) {
+        ctx.messageStore.completeMessage(doneCurrentId);
+      }
       break;
     }
 
