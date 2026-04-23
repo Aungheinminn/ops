@@ -150,10 +150,6 @@ function App() {
             case 'n':
               await SessionStore.createSession(process.cwd(), parsed.args || undefined);
               return;
-            case 'close':
-            case 'w':
-              if (id) SessionStore.closeSession(id);
-              return;
             case 'switch':
             case 's': {
               const ids = sessionIds();

@@ -14,12 +14,6 @@ export const COMMANDS: Command[] = [
     category: 'tui',
   },
   {
-    name: 'close',
-    aliases: ['w'],
-    description: 'Close current session',
-    category: 'tui',
-  },
-  {
     name: 'switch',
     aliases: ['s'],
     description: 'Switch to another session',

@@ -67,6 +67,7 @@ export function ChatPanel(props: ChatPanelProps) {
           ref={(r: ScrollBoxRenderable) => { scrollboxRef = r; }}
           stickyScroll={true}
           stickyStart="bottom"
+          focusable={false}
         >
           <MessageList messages={messages()} />
         </scrollbox>
