@@ -69,8 +69,9 @@ export interface MessageStore {
   getLastMessage(): RichMessage | undefined;
   getToolExecution(toolCallId: string): ToolExecutionState | undefined;
   
-  // Utility
-  clear(): void;
+    // Utility
+    clear(): void;
+    restoreMessages(messages: RichMessage[]): void;
 }
 
 // ============================================================================
@@ -340,6 +341,11 @@ export function createMessageStore(): MessageStore {
         currentMessageId: undefined,
         toolExecutions: new Map(),
       });
+    },
+
+    restoreMessages(messages: RichMessage[]): void {
+      setState('messages', messages);
+      log(`Restored ${messages.length} messages to store`);
     },
   };
 

@@ -1,5 +1,6 @@
 import { For, createMemo } from 'solid-js';
 import type { SessionData } from '../../../core/types.js';
+import type { SessionMetadata } from '../../../core/storage/types.js';
 import { Colors } from '../../../core/types.js';
 
 interface SidebarProps {
@@ -7,10 +8,16 @@ interface SidebarProps {
   activeId: string | null;
   focused: boolean;
   selectedIndex: number;
+  allSessionIds: string[];
+  savedSessions?: SessionMetadata[];
 }
 
 export function Sidebar(props: SidebarProps) {
-  const sessionsList = createMemo(() => Object.entries(props.sessions));
+  const savedSessionsMap = createMemo(() => {
+    const map = new Map<string, SessionMetadata>();
+    props.savedSessions?.forEach(s => map.set(s.id, s));
+    return map;
+  });
   
   const borderColor = () => props.focused ? Colors.borderFocused : Colors.border;
   
@@ -30,11 +37,16 @@ export function Sidebar(props: SidebarProps) {
         </text>
       </box>
       <box height={1} />
-      <For each={sessionsList()}>
-        {([id, data], index) => {
+      
+      {/* Combined Sessions List (sorted by activity) */}
+      <For each={props.allSessionIds}>
+        {(id, index) => {
+          const session = props.sessions[id];
+          const savedSession = savedSessionsMap().get(id);
           const isActive = () => id === props.activeId;
           const isSelected = () => index() === props.selectedIndex && props.focused;
-          const isIdle = () => Date.now() - data.lastActivity > 5 * 60 * 1000;
+          const isLoading = () => session?.isLoading || false;
+          const isIdle = () => session ? Date.now() - session.lastActivity > 5 * 60 * 1000 : false;
           
           const bgColor = () => {
             if (isActive()) return Colors.primary;
@@ -48,6 +60,8 @@ export function Sidebar(props: SidebarProps) {
             return Colors.info;
           };
           
+          const displayName = () => session?.name || savedSession?.name || 'Unknown';
+          
           return (
             <box 
               height={1} 
@@ -60,7 +74,7 @@ export function Sidebar(props: SidebarProps) {
                 </span>
               </text>
               <text flexShrink={0}>
-                {data.isLoading ? (
+                {isLoading() ? (
                   <span style={{ fg: "yellow" }}>◆ </span>
                 ) : (
                   <span style={{ fg: textColor() }}>◇ </span>
@@ -68,7 +82,7 @@ export function Sidebar(props: SidebarProps) {
               </text>
               <text>
                 <span style={{ fg: textColor() }}>
-                  {data.name}
+                  {displayName()}
                 </span>
               </text>
             </box>

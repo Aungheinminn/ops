@@ -4,7 +4,7 @@
 
 import type { AgentSession, AgentSessionEvent, AgentSessionServices } from '@mariozechner/pi-coding-agent';
 import type { SessionData } from '../types.js';
-import { authStorage, modelRegistry, agentDir } from '../config.js';
+import { authStorage, modelRegistry, agentDir, configManager } from '../config.js';
 import { ulid } from 'ulid';
 import { log, logError } from '../logger.js';
 import { createEventHandler as createNewEventHandler } from '../events/handlers.ts';
@@ -12,10 +12,18 @@ import type { EventHandlerContext } from '../events/types.ts';
 import { getOrCreateMessageStore } from '../messages/store.ts';
 import type { MessageStore } from '../messages/store.ts';
 
+export interface CreateSessionOptions {
+  cwd: string;
+  name?: string;
+  existingSessions?: Record<string, SessionData>;
+  defaultModel?: string;
+}
+
 export async function createSession(
   cwd: string,
   name?: string,
-  existingSessions: Record<string, SessionData> = {}
+  existingSessions: Record<string, SessionData> = {},
+  defaultModel?: string
 ): Promise<SessionData> {
   log(`createSession called: ${cwd} ${name || ''}`);
 
@@ -75,12 +83,38 @@ export async function createSession(
     });
     log('AgentSession created');
 
-    // Auto-select first available model
+    // Select model with priority: CLI option > saved config > first available
     const availableModels = modelRegistry.getAvailable();
-    if (availableModels.length > 0) {
-      const firstModel = availableModels[0];
-      await session.setModel(firstModel);
-      log(`Auto-selected model: ${firstModel.provider}/${firstModel.id}`);
+    let selectedModel = null;
+
+    // Priority 1: CLI --model option
+    if (defaultModel) {
+      selectedModel = availableModels.find(m => m.id === defaultModel);
+      if (selectedModel) {
+        log(`Using CLI-specified model: ${selectedModel.id}`);
+      }
+    }
+
+    // Priority 2: Saved config preference
+    if (!selectedModel) {
+      const savedModelId = configManager.get<string>('defaultModel');
+      if (savedModelId) {
+        selectedModel = availableModels.find(m => m.id === savedModelId);
+        if (selectedModel) {
+          log(`Using saved model preference: ${selectedModel.id}`);
+        }
+      }
+    }
+
+    // Priority 3: First available model
+    if (!selectedModel && availableModels.length > 0) {
+      selectedModel = availableModels[0];
+      log(`Auto-selected first available model: ${selectedModel.id}`);
+    }
+
+    if (selectedModel) {
+      await session.setModel(selectedModel);
+      log(`Model set: ${selectedModel.provider}/${selectedModel.id}`);
     } else {
       log('No models available - check API keys in ~/.pi/agent/auth.json');
       log(`Available providers: ${authStorage.list().join(', ')}`);
@@ -88,7 +122,32 @@ export async function createSession(
     }
 
     const sessionId = ulid();
-    const sessionName = name || `Session ${Object.keys(existingSessions).length + 1}`;
+    
+    // Generate session name - only count sessions with default names (Session N)
+    // Renamed sessions should not affect the numbering
+    const allSessionNames = [
+      ...Object.values(existingSessions).map(s => s.name),
+    ];
+    
+    // Also check saved sessions on disk
+    try {
+      const { SessionStorage } = await import('../storage/session-storage.js');
+      const savedSessions = await SessionStorage.listSessions();
+      allSessionNames.push(...savedSessions.map(s => s.name));
+    } catch {
+      // Ignore disk read errors
+    }
+    
+    // Find the highest session number among default-named sessions
+    const sessionNumbers = allSessionNames
+      .map(n => {
+        const match = n.match(/^Session (\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => n > 0);
+    
+    const nextNumber = sessionNumbers.length > 0 ? Math.max(...sessionNumbers) + 1 : 1;
+    const sessionName = name || `Session ${nextNumber}`;
 
     // Create message store for this session (uses registry to ensure same instance everywhere)
     const messageStore = getOrCreateMessageStore(sessionId);
@@ -118,6 +177,7 @@ export interface EventHandlerCallbacks {
   onLoadingChange: (loading: boolean) => void;
   onActivity: () => void;
   onMessageStoreUpdate?: (messageStore: MessageStore) => void;
+  onMessageUpdate?: () => void; // Called when messages are updated (for auto-save)
 }
 
 export function createSessionEventHandler(

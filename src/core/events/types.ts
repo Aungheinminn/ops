@@ -332,6 +332,7 @@ export interface EventHandlerContext {
   // Callbacks for UI updates
   onLoadingChange: (loading: boolean) => void;
   onActivity: () => void;
+  onMessageUpdate?: () => void; // Called when messages are updated (for auto-save)
 
   // Message store operations (will be injected from message store)
   messageStore: {

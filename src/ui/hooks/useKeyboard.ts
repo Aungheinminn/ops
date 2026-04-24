@@ -8,6 +8,7 @@ export interface KeyboardConfig {
   onNewSession?: () => void;
   onCloseSession?: () => void;
   onSwitchSession?: () => void;
+  onRenameSession?: () => void;
   onQuit?: () => void;
   onFocusSidebar?: () => void;
   onEscape?: () => void;
@@ -91,6 +92,10 @@ function handleGlobalKeys(e: KeyEvent, config: KeyboardConfig): void {
       break;
     case 's':
       config.onFocusSidebar?.();
+      e.preventDefault();
+      break;
+    case 'r':
+      config.onRenameSession?.();
       e.preventDefault();
       break;
   }

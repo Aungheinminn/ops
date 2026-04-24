@@ -47,6 +47,31 @@ export const COMMANDS: Command[] = [
     category: 'session',
   },
   {
+    name: 'save',
+    description: 'Save session to disk (optionally with new name: /save <name>)',
+    category: 'session',
+  },
+  {
+    name: 'load',
+    description: 'Load a saved session: /load <session-id>',
+    category: 'session',
+  },
+  {
+    name: 'sessions',
+    description: 'List all saved sessions on disk',
+    category: 'session',
+  },
+  {
+    name: 'delete',
+    description: 'Delete a saved session: /delete <session-id>',
+    category: 'session',
+  },
+  {
+    name: 'rename',
+    description: 'Rename current session: /rename <new-name>',
+    category: 'session',
+  },
+  {
     name: 'settings',
     description: 'Open settings menu',
     category: 'agent',

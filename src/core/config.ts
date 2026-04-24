@@ -3,6 +3,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { log, logError, logObject } from './logger.js';
+import { configManager } from './config/manager.js';
 
 // OPS-specific config directory: ~/.pi/ops/
 export const opsConfigDir = join(homedir(), '.pi', 'ops');
@@ -49,3 +50,5 @@ log(`Available models: ${modelRegistry.getAvailable().length}`);
 log(`Auth providers: ${authStorage.list().join(', ')}`);
 
 export { agentDir };
+export { configManager };
+export type { OpsConfig } from './config/manager.js';

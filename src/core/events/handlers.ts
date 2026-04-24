@@ -322,6 +322,9 @@ export function createEventHandler(ctx: EventHandlerContext) {
 
     const routed = router.route(event);
 
+    // Track if this event modifies messages (for auto-save)
+    let messageWasUpdated = false;
+
     try {
       switch (routed.category) {
         case 'lifecycle':
@@ -334,14 +337,17 @@ export function createEventHandler(ctx: EventHandlerContext) {
 
         case 'message':
           handleMessageEvent(routed, ctx);
+          messageWasUpdated = true;
           break;
 
         case 'streaming':
           handleStreamingEvent(routed, ctx);
+          messageWasUpdated = true;
           break;
 
         case 'tool_execution':
           handleToolExecutionEvent(routed, ctx);
+          messageWasUpdated = true;
           break;
 
         case 'session':
@@ -354,6 +360,11 @@ export function createEventHandler(ctx: EventHandlerContext) {
       }
     } catch (err) {
       logError(`Error handling event ${event.type}`, err);
+    }
+
+    // Notify about message updates for auto-save
+    if (messageWasUpdated && ctx.onMessageUpdate) {
+      ctx.onMessageUpdate();
     }
   };
 }
