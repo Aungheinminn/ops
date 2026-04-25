@@ -1,6 +1,7 @@
 import { render, useTerminalDimensions, useRenderer } from '@opentui/solid';
 import { createMemo, onMount, createSignal, Show } from 'solid-js';
 import type { CLIOptions } from '../cli/types.js';
+import { Colors } from '../core/types.js';
 import { SessionStore } from '../core/session/index.js';
 import { SessionStorage } from '../core/storage/session-storage.js';
 import type { SessionMetadata } from '../core/storage/types.js';
@@ -47,11 +48,6 @@ function App(props: AppProps) {
   const [activeDialog, setActiveDialog] = createSignal<{
     type: string;
     args: string;
-  } | null>(null);
-
-  const [renameDialog, setRenameDialog] = createSignal<{
-    isOpen: boolean;
-    currentName: string;
   } | null>(null);
 
   const [savedSessions, setSavedSessions] = createSignal<SessionMetadata[]>([]);
@@ -136,12 +132,12 @@ function App(props: AppProps) {
     onQuit: cleanup,
 
     onEscape: () => {
-      if (renameDialog()) {
-        setRenameDialog(null);
-      } else if (activeDialog()) {
+      if (activeDialog()) {
         handleDialogCancel();
       }
     },
+
+
 
     onFocusSidebar: () => {
       if (activeDialog()) return;
@@ -196,10 +192,7 @@ function App(props: AppProps) {
 
     onRenameSession: () => {
       if (activeDialog()) return;
-      const session = activeSession();
-      if (session) {
-        setRenameDialog({ isOpen: true, currentName: session.name });
-      }
+      setActiveDialog({ type: 'rename', args: '' });
     },
   });
 
@@ -379,12 +372,9 @@ Messages: ${sessionData.messages.length}`;
         <ChatPanel session={activeSession()} />
 
         <Show
-          when={renameDialog()}
-          fallback={
-            <Show
-              when={activeDialog()}
-              fallback={<InputBar onSubmit={handleInput} currentModel={activeSession()?.session?.model} />}
-            >
+          when={activeDialog()}
+          fallback={<InputBar onSubmit={handleInput} currentModel={activeSession()?.session?.model} />}
+        >
               {(dialog) => {
                 const sessionData = activeSession();
                 if (!sessionData) return null;
@@ -456,39 +446,65 @@ Messages: ${sessionData.messages.length}`;
                       </box>
                     );
 
+                  case 'rename': {
+                    const session = activeSession();
+                    let textareaRef: { plainText: string; focus: () => void } | undefined;
+                    
+                    const handleRenameSubmit = () => {
+                      const id = activeId();
+                      const newName = textareaRef?.plainText.trim() || '';
+                      if (id && newName) {
+                        SessionStore.renameSession(id, newName);
+                      }
+                      setActiveDialog(null);
+                    };
+                    
+                    return (
+                      <box
+                        height={10}
+                        border={true}
+                        borderStyle="rounded"
+                        borderColor="#3b82f6"
+                        flexDirection="column"
+                        paddingLeft={1}
+                        paddingRight={1}
+                      >
+                        <text>
+                          <span style={{ bold: true, fg: "#3b82f6" }}>Rename Session</span>
+                        </text>
+                        <text>
+                          <span style={{ fg: "#6b7280" }}>Current: {session?.name || 'Unknown'}</span>
+                        </text>
+                        <box height={1} />
+                        <textarea
+                          flexGrow={1}
+                          minHeight={1}
+                          maxHeight={1}
+                          placeholder="Enter new session name..."
+                          textColor={Colors.white}
+                          focusedTextColor={Colors.white}
+                          keyBindings={[
+                            { name: "return", action: "submit" },
+                          ]}
+                          onSubmit={handleRenameSubmit}
+                          ref={(val: { plainText: string; focus: () => void }) => {
+                            textareaRef = val;
+                            setTimeout(() => val?.focus(), 0);
+                          }}
+                        />
+                        <box flexGrow={1} />
+                        <text>
+                          <span style={{ fg: "#6b7280" }}>Press Enter to save, Esc to cancel</span>
+                        </text>
+                      </box>
+                    );
+                  }
+
                   default:
                     return null;
                 }
               }}
             </Show>
-          }
-        >
-          {(rename) => (
-            <box
-              height={8}
-              border={true}
-              borderStyle="rounded"
-              borderColor="#3b82f6"
-              flexDirection="column"
-              paddingLeft={1}
-              paddingRight={1}
-            >
-              <text>
-                <span style={{ bold: true, fg: "#3b82f6" }}>Rename Session</span>
-              </text>
-              <text>
-                <span style={{ fg: "#6b7280" }}>Current: {rename().currentName}</span>
-              </text>
-              <box flexGrow={1} />
-              <text>
-                <span style={{ fg: "#fbbf24" }}>Use /rename &lt;new-name&gt; to rename</span>
-              </text>
-              <text>
-                <span style={{ fg: "#6b7280" }}>Press Esc to close</span>
-              </text>
-            </box>
-          )}
-        </Show>
       </box>
     </box>
   );

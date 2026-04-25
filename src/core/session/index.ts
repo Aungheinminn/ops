@@ -303,7 +303,7 @@ class SessionStoreClass {
    * Check if a name is a default generated name
    */
   private isDefaultName(name: string): boolean {
-    return name.startsWith('Session') && /^Session \d+$/.test(name);
+    return name === 'New Session';
   }
 
   /**

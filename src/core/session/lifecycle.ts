@@ -123,31 +123,8 @@ export async function createSession(
 
     const sessionId = ulid();
     
-    // Generate session name - only count sessions with default names (Session N)
-    // Renamed sessions should not affect the numbering
-    const allSessionNames = [
-      ...Object.values(existingSessions).map(s => s.name),
-    ];
-    
-    // Also check saved sessions on disk
-    try {
-      const { SessionStorage } = await import('../storage/session-storage.js');
-      const savedSessions = await SessionStorage.listSessions();
-      allSessionNames.push(...savedSessions.map(s => s.name));
-    } catch {
-      // Ignore disk read errors
-    }
-    
-    // Find the highest session number among default-named sessions
-    const sessionNumbers = allSessionNames
-      .map(n => {
-        const match = n.match(/^Session (\d+)$/);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter(n => n > 0);
-    
-    const nextNumber = sessionNumbers.length > 0 ? Math.max(...sessionNumbers) + 1 : 1;
-    const sessionName = name || `Session ${nextNumber}`;
+    // Use "New Session" as the default name for all new sessions
+    const sessionName = name || 'New Session';
 
     // Create message store for this session (uses registry to ensure same instance everywhere)
     const messageStore = getOrCreateMessageStore(sessionId);
