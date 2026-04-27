@@ -22,7 +22,7 @@ export function Sidebar(props: SidebarProps) {
     return map;
   });
   
-  const borderColor = () => props.focused ? Colors.borderFocused : Colors.border;
+  const borderColor = () => props.focused ? Colors.borderFocused : Colors.build;
 
   const [frame, setFrame] = createSignal(0);
 
