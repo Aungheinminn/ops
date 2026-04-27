@@ -1,7 +1,10 @@
-import { For, createMemo } from 'solid-js';
+import { For, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
 import type { SessionData } from '../../../core/types.js';
 import type { SessionMetadata } from '../../../core/storage/types.js';
 import { Colors } from '../../../core/types.js';
+
+const SPINNER_FRAMES = ['-', '\\', '|', '/'];
+const IDLE_INDICATOR = '  ';
 
 interface SidebarProps {
   sessions: Record<string, SessionData>;
@@ -20,6 +23,22 @@ export function Sidebar(props: SidebarProps) {
   });
   
   const borderColor = () => props.focused ? Colors.borderFocused : Colors.border;
+
+  const [frame, setFrame] = createSignal(0);
+
+  const hasLoadingSession = createMemo(() =>
+    props.allSessionIds.some(id => props.sessions[id]?.isLoading)
+  );
+
+  createEffect(() => {
+    if (!hasLoadingSession()) return;
+
+    const interval = setInterval(() => {
+      setFrame(f => (f + 1) % SPINNER_FRAMES.length);
+    }, 200);
+
+    onCleanup(() => clearInterval(interval));
+  });
   
   return (
     <box 
@@ -38,7 +57,6 @@ export function Sidebar(props: SidebarProps) {
       </box>
       <box height={1} />
       
-      {/* Combined Sessions List (sorted by activity) */}
       <For each={props.allSessionIds}>
         {(id, index) => {
           const session = props.sessions[id];
@@ -63,10 +81,11 @@ export function Sidebar(props: SidebarProps) {
           const displayName = () => session?.name || savedSession?.name || 'Unknown';
           
           return (
-            <box 
-              height={1} 
-              backgroundColor={bgColor()} 
+            <box
+              height={1}
+              backgroundColor={bgColor()}
               flexDirection="row"
+              alignItems="center"
             >
               <text flexShrink={0}>
                 <span style={{ bold: true }}>
@@ -75,9 +94,9 @@ export function Sidebar(props: SidebarProps) {
               </text>
               <text flexShrink={0}>
                 {isLoading() ? (
-                  <span style={{ fg: "yellow" }}>◆ </span>
+                  <span style={{ fg: "white" }}>{SPINNER_FRAMES[frame()]} </span>
                 ) : (
-                  <span style={{ fg: textColor() }}>◇ </span>
+                  <span style={{ fg: textColor() }}>{IDLE_INDICATOR}</span>
                 )}
               </text>
               <text>
