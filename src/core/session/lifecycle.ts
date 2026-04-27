@@ -19,13 +19,14 @@ export interface CreateSessionOptions {
   defaultModel?: string;
 }
 
-export async function createSession(
+async function createSessionInternal(
   cwd: string,
-  name?: string,
-  existingSessions: Record<string, SessionData> = {},
-  defaultModel?: string
+  name: string | undefined,
+  existingSessions: Record<string, SessionData>,
+  defaultModel: string | undefined,
+  sessionId: string
 ): Promise<SessionData> {
-  log(`createSession called: ${cwd} ${name || ''}`);
+  log(`createSessionInternal called: ${cwd} ${name || ''} with ID: ${sessionId}`);
 
   try {
     const {
@@ -44,50 +45,44 @@ export async function createSession(
 
     log('pi-coding-agent imported');
 
-    // Create settings manager
     const settingsManager = SettingsManager.create(cwd);
     log('SettingsManager created');
 
-    // Use shared authStorage and modelRegistry from config module
     log('Creating AgentSessionServices...');
     const services = await createAgentSessionServices({
       cwd,
-      authStorage,   // Shared instance from config
+      authStorage,
       settingsManager,
-      modelRegistry, // Shared instance from config
-      agentDir,      // Pass agentDir for extensions/themes
+      modelRegistry,
+      agentDir,
     });
     log('AgentSessionServices created');
 
-    // Create session with services and all coding tools
     log('Creating SessionManager...');
     const sm = SessionManager.create(cwd);
     log('SessionManager created');
 
-    // Use all tools for full coding capabilities
     const tools = [
-      readTool,    // Read file contents
-      bashTool,    // Execute bash commands
-      editTool,    // Edit files (search/replace)
-      writeTool,   // Write new files
-      grepTool,    // Search file contents
-      findTool,    // Find files by pattern
-      lsTool,      // List directory contents
+      readTool,
+      bashTool,
+      editTool,
+      writeTool,
+      grepTool,
+      findTool,
+      lsTool,
     ];
 
     log('Creating AgentSession from services...');
     const { session } = await createAgentSessionFromServices({
       services,
       sessionManager: sm,
-      tools, // Enable all coding tools
+      tools,
     });
     log('AgentSession created');
 
-    // Select model with priority: CLI option > saved config > first available
     const availableModels = modelRegistry.getAvailable();
     let selectedModel = null;
 
-    // Priority 1: CLI --model option
     if (defaultModel) {
       selectedModel = availableModels.find(m => m.id === defaultModel);
       if (selectedModel) {
@@ -95,18 +90,16 @@ export async function createSession(
       }
     }
 
-    // Priority 2: Saved config preference
     if (!selectedModel) {
       const savedModelId = configManager.get<string>('defaultModel');
       if (savedModelId) {
         selectedModel = availableModels.find(m => m.id === savedModelId);
         if (selectedModel) {
-          log(`Using saved model preference: ${selectedModel.id}`);
+          log(`Using saved model preference: ${savedModelId}`);
         }
       }
     }
 
-    // Priority 3: First available model
     if (!selectedModel && availableModels.length > 0) {
       selectedModel = availableModels[0];
       log(`Auto-selected first available model: ${selectedModel.id}`);
@@ -121,12 +114,8 @@ export async function createSession(
       log(`All models count: ${modelRegistry.getAll().length}`);
     }
 
-    const sessionId = ulid();
-    
-    // Use "New Session" as the default name for all new sessions
     const sessionName = name || 'New Session';
 
-    // Create message store for this session (uses registry to ensure same instance everywhere)
     const messageStore = getOrCreateMessageStore(sessionId);
 
     const data: SessionData & { messageStore: MessageStore } = {
@@ -145,9 +134,29 @@ export async function createSession(
     log('Session data created, returning');
     return data;
   } catch (err) {
-    logError('createSession error', err);
+    logError('createSessionInternal error', err);
     throw err;
   }
+}
+
+export async function createSession(
+  cwd: string,
+  name?: string,
+  existingSessions: Record<string, SessionData> = {},
+  defaultModel?: string
+): Promise<SessionData> {
+  const sessionId = ulid();
+  return createSessionInternal(cwd, name, existingSessions, defaultModel, sessionId);
+}
+
+export async function createSessionWithId(
+  sessionId: string,
+  cwd: string,
+  name?: string,
+  existingSessions: Record<string, SessionData> = {},
+  defaultModel?: string
+): Promise<SessionData> {
+  return createSessionInternal(cwd, name, existingSessions, defaultModel, sessionId);
 }
 
 export interface EventHandlerCallbacks {

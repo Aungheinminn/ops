@@ -200,20 +200,24 @@ class SessionStoreClass {
     return data.id;
   }
 
-  /**
-   * Create a new session from saved session data
-   * This restores a session that was previously saved to disk
-   */
   async createSessionFromSaved(savedSession: SessionData, defaultModel?: string): Promise<string | null> {
     try {
-      // Create a new session with the saved session's properties
-      const newSessionId = await this.createSession(savedSession.cwd, savedSession.name, defaultModel);
+      if (store.sessions[savedSession.id]) {
+        log(`Session ${savedSession.id} already exists in memory, switching to it`);
+        this.setActiveId(savedSession.id);
+        return savedSession.id;
+      }
 
-      // Load the saved messages and restore them to the new session
+      const newSessionId = await this.createSessionWithId(
+        savedSession.id,
+        savedSession.cwd,
+        savedSession.name,
+        defaultModel
+      );
+
       const savedMessages = await SessionStorage.loadMessages(savedSession.id);
       if (savedMessages.length > 0) {
         const messageStore = getOrCreateMessageStore(newSessionId);
-        // Restore messages to the message store
         messageStore.restoreMessages(savedMessages);
         log(`Restored ${savedMessages.length} messages to session ${newSessionId}`);
       }
@@ -223,6 +227,40 @@ class SessionStoreClass {
       logError('Failed to create session from saved data', err);
       return null;
     }
+  }
+
+  private async createSessionWithId(
+    sessionId: string,
+    cwd: string,
+    name?: string,
+    defaultModel?: string
+  ): Promise<string> {
+    const { createSessionWithId } = await import('./lifecycle.js');
+    
+    const data = await createSessionWithId(sessionId, cwd, name, store.sessions, defaultModel);
+    log(`Session restored with original ID: ${data.id}, model: ${data.session.model?.id || 'none'}`);
+
+    const messageStore = getOrCreateMessageStore(data.id);
+
+    const handler = createSessionEventHandler(data.id, {
+      onLoadingChange: (loading) => {
+        log(`onLoadingChange: ${loading}`);
+        setStore('sessions', data.id, 'isLoading', loading);
+      },
+      onActivity: () => {
+        setStore('sessions', data.id, 'lastActivity', Date.now());
+      },
+      onMessageUpdate: () => {
+        this.triggerSave(data.id);
+      },
+    });
+
+    data.unsubscribe = data.session.subscribe(handler);
+    log('Subscribed to session events');
+    setStore('sessions', data.id, data);
+    this.setActiveId(data.id);
+
+    return data.id;
   }
 
   // ============================================================================

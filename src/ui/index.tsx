@@ -63,17 +63,10 @@ function App(props: AppProps) {
     const saved = savedSessions()
       .filter(s => !active.includes(s.id));
     
-    const allSessions = [
-      ...active.map(id => {
-        const session = sessions()[id];
-        return { id, timestamp: session?.lastActivity || 0 };
-      }),
-      ...saved.map(s => ({ id: s.id, timestamp: s.updatedAt }))
-    ];
+    const allIds = [...active, ...saved.map(s => s.id)];
+    allIds.sort((a, b) => b.localeCompare(a));
     
-    allSessions.sort((a, b) => b.timestamp - a.timestamp);
-    
-    return allSessions.map(s => s.id);
+    return allIds;
   });
 
   const activeIndex = createMemo(() => {
@@ -166,7 +159,6 @@ function App(props: AppProps) {
             if (loadedSession) {
               const newSessionId = await SessionStore.createSessionFromSaved(loadedSession, props.defaultModel);
               if (newSessionId) {
-                setSavedSessions(prev => prev.filter(s => s.id !== selectedId));
                 navActions.defocusSidebar();
                 return;
               }
