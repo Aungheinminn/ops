@@ -4,13 +4,10 @@ import type { InputMode } from '../../../core/types.js';
 import { Colors } from '../../../core/types.js';
 import type { KeyEvent, TextareaRenderable, ScrollBoxRenderable } from '@opentui/core';
 import { getAutocompleteCommands } from '../../../cli/commands.js';
-import { LoadingSpinner } from '../LoadingSpinner.js';
 
 interface InputBarProps {
   onSubmit: (text: string) => void;
   currentModel?: { id: string };
-  isLoading?: boolean;
-  interruptCount?: number;
 }
 
 const SLASH_COMMANDS = getAutocompleteCommands();
@@ -249,19 +246,7 @@ export function InputBar(props: InputBarProps) {
         />
       </box>
       
-      <Show when={props.isLoading}>
-        <box height={1} paddingLeft={1}>
-          <LoadingSpinner 
-            isLoading={true} 
-            message="Thinking..."
-            interruptCount={props.interruptCount}
-          />
-        </box>
-      </Show>
-      
-      <Show when={!props.isLoading}>
-        <box flexGrow={1} minHeight={1} />
-      </Show>
+      <box flexGrow={1} minHeight={1} />
       
       <box height={1} paddingLeft={1}>
         <text>

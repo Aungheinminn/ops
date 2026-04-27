@@ -53,16 +53,6 @@ function App(props: AppProps) {
   const [savedSessions, setSavedSessions] = createSignal<SessionMetadata[]>([]);
   const [savedSessionsLoaded, setSavedSessionsLoaded] = createSignal(false);
 
-  // Interrupt state for stopping agent execution
-  const [interruptCount, setInterruptCount] = createSignal(0);
-  let interruptTimeout: NodeJS.Timeout | null = null;
-
-  // Track if session is loading
-  const isSessionLoading = createMemo(() => {
-    const session = activeSession();
-    return session?.isLoading ?? false;
-  });
-
   const sessions = createMemo(() => SessionStore.getSessions());
   const activeId = createMemo(() => SessionStore.getActiveId());
   const activeSession = createMemo(() => SessionStore.getActiveSession());
@@ -125,18 +115,12 @@ function App(props: AppProps) {
 
     onCloseSession: () => {
       if (activeDialog()) return;
-      // Reset interrupt count when closing session
-      if (interruptTimeout) clearTimeout(interruptTimeout);
-      setInterruptCount(0);
       const id = activeId();
       if (id) SessionStore.closeSession(id);
     },
 
     onSwitchSession: () => {
       if (activeDialog()) return;
-      // Reset interrupt count when switching sessions
-      if (interruptTimeout) clearTimeout(interruptTimeout);
-      setInterruptCount(0);
       const ids = allSessionIds();
       const currentIdx = activeIndex();
       const nextIdx = (currentIdx + 1) % ids.length;
@@ -150,32 +134,6 @@ function App(props: AppProps) {
     onEscape: () => {
       if (activeDialog()) {
         handleDialogCancel();
-        return;
-      }
-
-      // Handle interrupt for loading sessions
-      if (isSessionLoading()) {
-        const currentCount = interruptCount();
-        
-        if (currentCount === 0) {
-          // First press - show warning
-          setInterruptCount(1);
-          interruptTimeout = setTimeout(() => {
-            setInterruptCount(0);
-          }, 3000);
-        } else {
-          // Second press - trigger interrupt
-          if (interruptTimeout) clearTimeout(interruptTimeout);
-          setInterruptCount(0);
-          
-          // Abort the current session
-          const session = activeSession();
-          if (session?.session) {
-            // TODO: Implement abort functionality in pi-coding-agent
-            console.log('Interrupting session...');
-          }
-        }
-        return;
       }
     },
 
@@ -415,12 +373,7 @@ Messages: ${sessionData.messages.length}`;
 
         <Show
           when={activeDialog()}
-          fallback={<InputBar 
-            onSubmit={handleInput} 
-            currentModel={activeSession()?.session?.model}
-            isLoading={isSessionLoading()}
-            interruptCount={interruptCount()}
-          />}
+          fallback={<InputBar onSubmit={handleInput} currentModel={activeSession()?.session?.model} />}
         >
               {(dialog) => {
                 const sessionData = activeSession();
