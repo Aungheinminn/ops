@@ -58,13 +58,11 @@ function App(props: AppProps) {
   const activeSession = createMemo(() => SessionStore.getActiveSession());
   const sessionIds = createMemo(() => Object.keys(sessions()));
 
-  // Combine and sort all sessions by last activity (most recent first)
   const allSessionIds = createMemo(() => {
     const active = sessionIds();
     const saved = savedSessions()
       .filter(s => !active.includes(s.id));
     
-    // Create a combined list with timestamps for sorting
     const allSessions = [
       ...active.map(id => {
         const session = sessions()[id];
@@ -73,7 +71,6 @@ function App(props: AppProps) {
       ...saved.map(s => ({ id: s.id, timestamp: s.updatedAt }))
     ];
     
-    // Sort by timestamp descending (most recent first)
     allSessions.sort((a, b) => b.timestamp - a.timestamp);
     
     return allSessions.map(s => s.id);
@@ -85,7 +82,6 @@ function App(props: AppProps) {
   });
 
   onMount(async () => {
-    // Load saved sessions from disk first
     const diskSessions = await SessionStorage.listSessions();
     setSavedSessions(diskSessions);
     setSavedSessionsLoaded(true);
@@ -94,7 +90,6 @@ function App(props: AppProps) {
       console.log(`Found ${diskSessions.length} saved sessions on disk`);
     }
     
-    // Only create a new session if there are no active sessions
     if (sessionIds().length === 0) {
       await SessionStore.createSession(process.cwd(), undefined, props.defaultModel);
     }
@@ -163,16 +158,12 @@ function App(props: AppProps) {
       const activeIds = sessionIds();
       const selectedId = ids[navState.sidebar.selectedIndex];
       if (selectedId) {
-        // Check if this is a saved session (not currently active)
         if (!activeIds.includes(selectedId)) {
-          // Load the saved session from disk
           const savedSession = savedSessions().find(s => s.id === selectedId);
           if (savedSession) {
             console.log(`Loading saved session: ${savedSession.name}`);
-            // Load the full session data from disk
             const loadedSession = await SessionStore.loadSavedSession(selectedId);
             if (loadedSession) {
-              // Create a new session with the saved data
               const newSessionId = await SessionStore.createSessionFromSaved(loadedSession, props.defaultModel);
               if (newSessionId) {
                 setSavedSessions(prev => prev.filter(s => s.id !== selectedId));
@@ -182,7 +173,6 @@ function App(props: AppProps) {
             }
           }
         }
-        // For active sessions, just switch
         SessionStore.switchSession(selectedId);
         navActions.defocusSidebar();
       }
@@ -334,7 +324,6 @@ Messages: ${sessionData.messages.length}`;
         if (result && typeof result === 'object' && 'id' in result) {
           const model = result as any;
           await sessionData.session.setModel(model);
-          // Persist model selection to config
           configManager.set('defaultModel', model.id);
           await configManager.save();
         }
@@ -511,7 +500,6 @@ Messages: ${sessionData.messages.length}`;
 }
 
 export async function runTUI(options: CLIOptions): Promise<void> {
-  // Store CLI options for use in the app
   const appOptions = options;
 
   function AppWithOptions() {

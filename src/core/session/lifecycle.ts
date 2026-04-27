@@ -168,6 +168,7 @@ export function createSessionEventHandler(
   const context: EventHandlerContext = {
     onLoadingChange: callbacks.onLoadingChange,
     onActivity: callbacks.onActivity,
+    onMessageUpdate: callbacks.onMessageUpdate,
     messageStore: {
       startMessage: (msgId: string, role: 'assistant', timestamp: number) => messageStore.startMessage(msgId, role, timestamp),
       addContentBlock: (msgId: string, block: unknown) => messageStore.addContentBlock(msgId, block as import('../messages/types.ts').ContentBlock),

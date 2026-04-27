@@ -387,14 +387,14 @@ class SessionStoreClass {
     setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
     setStore('sessions', sessionId, 'lastActivity', Date.now());
 
-    // Auto-rename and save on first user message
+    // Auto-rename on first user message, save on all messages
     const messages = messageStore.messages;
     const userMessages = messages.filter((m: RichMessage) => m.role === 'user');
     if (userMessages.length === 1) {
       await this.autoRenameSession(sessionId, content);
-      // Save session only on first message
-      this.triggerSave(sessionId);
     }
+    // Save session after every message
+    this.triggerSave(sessionId);
 
     log('Calling session.sendUserMessage...');
     try {

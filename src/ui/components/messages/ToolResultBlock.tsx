@@ -7,19 +7,12 @@ interface ToolResultBlockProps {
   block: ToolResultBlockType;
 }
 
-/**
- * ToolResultBlock - Renders tool execution results
- * 
- * Conditionally renders markdown if the content contains markdown syntax,
- * otherwise renders as plain text for better readability of command output.
- */
 export function ToolResultBlock(props: ToolResultBlockProps) {
   const icon = () => props.block.isError ? '✗' : '✓';
   const iconColor = () => props.block.isError ? Colors.error : Colors.success;
 
   const output = () => {
     const content = props.block.content;
-    // Limit output length for display
     if (content.length > 500) {
       return content.slice(0, 500) + '\n... (' + (content.length - 500) + ' more chars)';
     }

@@ -12,7 +12,6 @@ interface AssistantMessageProps {
 }
 
 export function AssistantMessage(props: AssistantMessageProps) {
-  // Check if any tool calls are streaming (being received)
   const streamingToolCalls = createMemo(() => {
     return props.message.content.filter(
       (block): block is ToolCallBlockType => 
@@ -20,18 +19,15 @@ export function AssistantMessage(props: AssistantMessageProps) {
     );
   });
 
-  // Determine loading text based on what's streaming
   const loadingText = createMemo(() => {
     if (!props.message.isStreaming) return null;
     
     const tools = streamingToolCalls();
     if (tools.length > 0) {
-      // If we have tool calls streaming, show the tool name
       const toolName = tools[0]?.name || 'tool';
       return `Calling ${toolName}...`;
     }
     
-    // Otherwise show thinking
     return 'Thinking...';
   });
 

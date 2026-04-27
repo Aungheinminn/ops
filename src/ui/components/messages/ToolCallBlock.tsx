@@ -5,9 +5,7 @@ interface ToolCallBlockProps {
   block: ToolCallBlockType;
 }
 
-// Simple tools: no box, inline display
 const SIMPLE_TOOLS = ['read', 'bash', 'grep', 'find', 'ls'];
-// Complex tools: keep box but show file_path in header
 const COMPLEX_TOOLS = ['edit', 'write'];
 
 function getIcon(name: string): string {
@@ -23,12 +21,10 @@ function getIcon(name: string): string {
   return icons[name] || '🔧';
 }
 
-// Get file path from args (all tools use 'path')
 function getFilePath(args: Record<string, unknown>): string {
   return String(args.path || 'unknown');
 }
 
-// Format simple tool display (inline, no box)
 function formatSimpleTool(name: string, args: Record<string, unknown>): string {
   switch (name) {
     case 'read':
@@ -52,13 +48,11 @@ function formatSimpleTool(name: string, args: Record<string, unknown>): string {
   }
 }
 
-// Format complex tool content (raw text, not JSON)
 function formatComplexToolContent(name: string, args: Record<string, unknown>): string {
   if (name === 'write') {
     return String(args.content || '');
   }
   if (name === 'edit') {
-    // Edit tool uses { path, edits: [{ oldText, newText }] }
     const edits = args.edits as Array<{ oldText?: string; newText?: string }> | undefined;
     
     if (edits && edits.length > 0) {
@@ -77,7 +71,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
   const { name, arguments: args, isStreaming } = props.block;
   const icon = getIcon(name);
 
-  // Loading state: show compact inline indicator while streaming
   if (isStreaming) {
     return (
       <box flexDirection="row" marginY={1}>
@@ -91,7 +84,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
     );
   }
 
-  // Simple tools: inline display without box
   if (SIMPLE_TOOLS.includes(name)) {
     return (
       <box flexDirection="row" marginY={1}>
@@ -105,7 +97,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
     );
   }
 
-  // Complex tools: box with file_path in header, raw content inside
   if (COMPLEX_TOOLS.includes(name)) {
     const content = formatComplexToolContent(name, args);
     return (
@@ -118,7 +109,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
         paddingLeft={1}
         paddingRight={1}
       >
-        {/* Header row with icon + tool name + file_path */}
         <box flexDirection="row">
           <text>{icon}</text>
           <box paddingLeft={1}>
@@ -129,7 +119,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
             </text>
           </box>
         </box>
-        {/* Raw content inside the same box - NOT JSON */}
         <box paddingTop={1}>
           <text style={{ fg: Colors.light }}>{content}</text>
         </box>
@@ -137,7 +126,6 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
     );
   }
 
-  // Fallback for unknown tools: display as JSON
   const content = JSON.stringify(args, null, 2);
   return (
     <box
