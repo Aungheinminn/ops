@@ -1,7 +1,7 @@
 import { render, useTerminalDimensions, useRenderer } from '@opentui/solid';
-import { createMemo, onMount, createSignal, Show } from 'solid-js';
+import { createMemo, onMount, createSignal, Show, createEffect } from 'solid-js';
 import type { CLIOptions } from '../cli/types.js';
-import { Colors } from '../core/types.js';
+import { Colors, type InputMode } from '../core/types.js';
 import { SessionStore } from '../core/session/index.js';
 import { SessionStorage } from '../core/storage/session-storage.js';
 import type { SessionMetadata } from '../core/storage/types.js';
@@ -52,11 +52,26 @@ function App(props: AppProps) {
 
   const [savedSessions, setSavedSessions] = createSignal<SessionMetadata[]>([]);
   const [savedSessionsLoaded, setSavedSessionsLoaded] = createSignal(false);
+  const [queueCount, setQueueCount] = createSignal(0);
+  const [inputMode, setInputMode] = createSignal<InputMode>('build');
 
   const sessions = createMemo(() => SessionStore.getSessions());
   const activeId = createMemo(() => SessionStore.getActiveId());
   const activeSession = createMemo(() => SessionStore.getActiveSession());
   const sessionIds = createMemo(() => Object.keys(sessions()));
+
+  // Track queue state for active session
+  const activeQueueState = createMemo(() => {
+    const id = activeId();
+    if (!id) return { steering: [], followUp: [], totalCount: 0 };
+    return SessionStore.getQueueState(id);
+  });
+
+  // Update queue count when queue state changes
+  createEffect(() => {
+    const state = activeQueueState();
+    setQueueCount(state.totalCount);
+  });
 
   const allSessionIds = createMemo(() => {
     const active = sessionIds();
@@ -178,14 +193,14 @@ function App(props: AppProps) {
     },
   });
 
-  const handleInput = async (text: string) => {
+  const handleInput = async (text: string, mode: InputMode, options?: { forceSteer?: boolean; forceFollowUp?: boolean }) => {
     const id = activeId();
     if (!id) return;
 
     if (isCommand(text)) {
       const parsed = parseCommand(text);
       if (!parsed) {
-        await SessionStore.sendMessage(id, text);
+        await SessionStore.sendMessageWithMode(id, text, mode, options);
         return;
       }
 
@@ -235,13 +250,13 @@ function App(props: AppProps) {
             return;
           }
 
-          await SessionStore.sendMessage(id, text);
+          await SessionStore.sendMessageWithMode(id, text, mode, options);
           return;
         }
       }
     }
 
-    await SessionStore.sendMessage(id, text);
+    await SessionStore.sendMessageWithMode(id, text, mode, options);
   };
 
   const handleDirectAgentCommand = async (sessionId: string, cmd: string, args: string) => {
@@ -350,11 +365,20 @@ Messages: ${sessionData.messages.length}`;
         savedSessions={savedSessions()}
       />
       <box flexGrow={1} flexDirection="column">
-        <ChatPanel session={activeSession()} />
+        <ChatPanel session={activeSession()} queueState={activeQueueState()} mode={inputMode()} />
 
         <Show
           when={activeDialog()}
-          fallback={<InputBar onSubmit={handleInput} currentModel={activeSession()?.session?.model} />}
+          fallback={
+            <InputBar
+              onSubmit={handleInput}
+              currentModel={activeSession()?.session?.model}
+              isStreaming={activeSession()?.isLoading}
+              queueCount={queueCount()}
+              mode={inputMode()}
+              onModeChange={setInputMode}
+            />
+          }
         >
               {(dialog) => {
                 const sessionData = activeSession();

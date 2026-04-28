@@ -1,25 +1,23 @@
 import { createStore, produce } from 'solid-js/store';
-import type { SessionData, Message as OldMessage } from '../types.js';
-import type { SessionStoreState, SessionListItem } from './types.js';
+import type { SessionData, Message as OldMessage, InputMode } from '../types.js';
+import type { SessionStoreState, SessionListItem, QueueState } from './types.js';
 import { createSession, createSessionEventHandler, cleanupSession } from './lifecycle.js';
 import { createUserMessage as createOldUserMessage } from '../messages.js';
 import { hasSessionHandler, getSessionHandler } from '../commands.js';
-import { log, logError } from '../logger.js';
 import { getOrCreateMessageStore, removeMessageStore, type MessageStore } from '../messages/store.ts';
 import type { RichMessage } from '../messages/types.ts';
 import { SessionStorage } from '../storage/session-storage.js';
 import type { PersistedSession, SessionMetadata } from '../storage/types.js';
 import { ulid } from 'ulid';
+import { routeMessage, isAgentBusy, getQueueState, clearQueue } from '../queue/router.ts';
 
 const [store, setStore] = createStore<SessionStoreState>({
   sessions: {},
   activeId: null,
+  queueStates: {},
 });
 
-// Debounce timers for auto-save
 const debounceTimers = new Map<string, NodeJS.Timeout>();
-
-// Track which sessions need to be saved
 const pendingSaves = new Set<string>();
 
 class SessionStoreClass {
@@ -43,63 +41,47 @@ class SessionStoreClass {
     return getOrCreateMessageStore(sessionId);
   }
 
-  // ============================================================================
-  // Session Discovery and Loading
-  // ============================================================================
+  getQueueState(sessionId: string): QueueState {
+    return store.queueStates[sessionId] ?? { steering: [], followUp: [], totalCount: 0 };
+  }
 
-  /**
-   * Discover all saved sessions from disk
-   * Called on app startup to populate the session list
-   */
+  isAgentBusy(sessionId: string): boolean {
+    const data = store.sessions[sessionId];
+    if (!data) return false;
+    return isAgentBusy(data.session, sessionId);
+  }
+
   async discoverSessions(): Promise<SessionMetadata[]> {
     const sessions = await SessionStorage.listSessions();
-    log(`Discovered ${sessions.length} saved sessions`);
     return sessions;
   }
 
-  /**
-   * Load a saved session from disk
-   * Creates a new SessionData from persisted data
-   */
   async loadSavedSession(sessionId: string): Promise<SessionData | null> {
     const persisted = await SessionStorage.loadSession(sessionId);
     if (!persisted) {
-      logError(`Failed to load session: ${sessionId}`);
       return null;
     }
 
     const messages = await SessionStorage.loadMessages(sessionId);
     
-    // Create session data structure
     const sessionData: Partial<SessionData> = {
       id: persisted.id,
       name: persisted.name,
       cwd: persisted.cwd,
       lastActivity: persisted.updatedAt,
-      messages: [], // Will be converted from RichMessage
+      messages: [],
       isLoading: false,
-      // Note: session, services, and unsubscribe will be set up by lifecycle
     };
 
-    log(`Loaded saved session: ${persisted.name} (${messages.length} messages)`);
     return sessionData as SessionData;
   }
 
-  // ============================================================================
-  // Auto-Save with Debouncing
-  // ============================================================================
-
-  /**
-   * Debounced save for messages
-   */
   private debouncedSave(sessionId: string): void {
-    // Clear existing timer
     const existing = debounceTimers.get(sessionId);
     if (existing) {
       clearTimeout(existing);
     }
 
-    // Set new timer
     const timer = setTimeout(() => {
       this.saveSessionNow(sessionId);
       debounceTimers.delete(sessionId);
@@ -110,9 +92,6 @@ class SessionStoreClass {
     pendingSaves.add(sessionId);
   }
 
-  /**
-   * Force immediate save (bypass debounce)
-   */
   async saveSessionNow(sessionId: string): Promise<void> {
     const data = store.sessions[sessionId];
     if (!data) return;
@@ -120,13 +99,12 @@ class SessionStoreClass {
     const messageStore = getOrCreateMessageStore(sessionId);
     const messages = messageStore.messages;
 
-    // Convert to persisted session
     const persisted: PersistedSession = {
       id: data.id,
       name: data.name,
       cwd: data.cwd,
       model: data.session.model?.id || 'unknown',
-      createdAt: data.lastActivity - 1000, // Approximate
+      createdAt: data.lastActivity - 1000,
       updatedAt: Date.now(),
       messageCount: messages.length,
       lastMessageAt: messages.length > 0 
@@ -137,25 +115,15 @@ class SessionStoreClass {
     try {
       await SessionStorage.saveSession(persisted);
       await SessionStorage.saveMessages(sessionId, messages);
-      log(`Session saved: ${sessionId} (${messages.length} messages)`);
     } catch (err) {
-      logError(`Failed to save session ${sessionId}`, err);
     }
   }
 
-  /**
-   * Trigger a debounced save
-   */
   triggerSave(sessionId: string): void {
     this.debouncedSave(sessionId);
   }
 
-  /**
-   * Save all pending sessions immediately
-   * Called before app exit
-   */
   async saveAllPending(): Promise<void> {
-    // Clear all debounce timers and save immediately
     for (const [sessionId, timer] of debounceTimers.entries()) {
       clearTimeout(timer);
       await this.saveSessionNow(sessionId);
@@ -164,38 +132,31 @@ class SessionStoreClass {
     pendingSaves.clear();
   }
 
-  // ============================================================================
-  // Session Creation
-  // ============================================================================
-
   async createSession(cwd: string, name?: string, defaultModel?: string): Promise<string> {
     const data = await createSession(cwd, name, store.sessions, defaultModel);
-    log(`Session created, model: ${data.session.model?.id || 'none'}`);
 
-    // Get or create message store - session lifecycle already registered it
     const messageStore = getOrCreateMessageStore(data.id);
+
+    setStore('queueStates', data.id, { steering: [], followUp: [], totalCount: 0 });
 
     const handler = createSessionEventHandler(data.id, {
       onLoadingChange: (loading) => {
-        log(`onLoadingChange: ${loading}`);
         setStore('sessions', data.id, 'isLoading', loading);
       },
       onActivity: () => {
         setStore('sessions', data.id, 'lastActivity', Date.now());
       },
       onMessageUpdate: () => {
-        // Trigger debounced save when messages update
         this.triggerSave(data.id);
+      },
+      onQueueUpdate: (queueState) => {
+        setStore('queueStates', data.id, queueState);
       },
     });
 
     data.unsubscribe = data.session.subscribe(handler);
-    log('Subscribed to session events');
     setStore('sessions', data.id, data);
     this.setActiveId(data.id);
-
-    // Note: Session is saved only when first message is sent
-    // See sendMessage() for the auto-save trigger
 
     return data.id;
   }
@@ -203,7 +164,6 @@ class SessionStoreClass {
   async createSessionFromSaved(savedSession: SessionData, defaultModel?: string): Promise<string | null> {
     try {
       if (store.sessions[savedSession.id]) {
-        log(`Session ${savedSession.id} already exists in memory, switching to it`);
         this.setActiveId(savedSession.id);
         return savedSession.id;
       }
@@ -219,12 +179,10 @@ class SessionStoreClass {
       if (savedMessages.length > 0) {
         const messageStore = getOrCreateMessageStore(newSessionId);
         messageStore.restoreMessages(savedMessages);
-        log(`Restored ${savedMessages.length} messages to session ${newSessionId}`);
       }
 
       return newSessionId;
     } catch (err) {
-      logError('Failed to create session from saved data', err);
       return null;
     }
   }
@@ -238,13 +196,13 @@ class SessionStoreClass {
     const { createSessionWithId } = await import('./lifecycle.js');
     
     const data = await createSessionWithId(sessionId, cwd, name, store.sessions, defaultModel);
-    log(`Session restored with original ID: ${data.id}, model: ${data.session.model?.id || 'none'}`);
 
     const messageStore = getOrCreateMessageStore(data.id);
 
+    setStore('queueStates', data.id, { steering: [], followUp: [], totalCount: 0 });
+
     const handler = createSessionEventHandler(data.id, {
       onLoadingChange: (loading) => {
-        log(`onLoadingChange: ${loading}`);
         setStore('sessions', data.id, 'isLoading', loading);
       },
       onActivity: () => {
@@ -253,33 +211,28 @@ class SessionStoreClass {
       onMessageUpdate: () => {
         this.triggerSave(data.id);
       },
+      onQueueUpdate: (queueState) => {
+        setStore('queueStates', data.id, queueState);
+      },
     });
 
     data.unsubscribe = data.session.subscribe(handler);
-    log('Subscribed to session events');
     setStore('sessions', data.id, data);
     this.setActiveId(data.id);
 
     return data.id;
   }
 
-  // ============================================================================
-  // Session Management
-  // ============================================================================
-
   closeSession(id: string): void {
     const data = store.sessions[id];
     if (!data) return;
 
-    // Save before closing
     this.saveSessionNow(id);
 
     cleanupSession(data);
 
-    // Clean up message store
     removeMessageStore(id);
 
-    // Clean up debounce timer
     const timer = debounceTimers.get(id);
     if (timer) {
       clearTimeout(timer);
@@ -289,6 +242,10 @@ class SessionStoreClass {
 
     setStore('sessions', produce((sessions: Record<string, SessionData>) => {
       delete sessions[id];
+    }));
+
+    setStore('queueStates', produce((states: Record<string, QueueState>) => {
+      delete states[id];
     }));
 
     if (store.activeId === id) {
@@ -307,28 +264,15 @@ class SessionStoreClass {
       return;
     }
 
-    // Try to load from disk if not in memory
-    log(`Session ${id} not in memory, attempting to load from disk...`);
     const savedSession = await this.loadSavedSession(id);
     if (savedSession) {
-      // TODO: Need to properly restore session with AgentSession
-      // For now, just log that we found it
-      log(`Found saved session: ${savedSession.name}`);
     }
   }
 
-  // ============================================================================
-  // Session Renaming
-  // ============================================================================
-
-  /**
-   * Auto-rename session based on first user message
-   */
   async autoRenameSession(sessionId: string, userMessage: string): Promise<void> {
     const data = store.sessions[sessionId];
     if (!data) return;
 
-    // Only auto-rename if using default name
     if (!this.isDefaultName(data.name)) {
       return;
     }
@@ -337,31 +281,22 @@ class SessionStoreClass {
     await this.renameSession(sessionId, newName);
   }
 
-  /**
-   * Check if a name is a default generated name
-   */
   private isDefaultName(name: string): boolean {
     return name === 'New Session';
   }
 
-  /**
-   * Generate a session name from user message
-   */
   private generateSessionName(message: string): string {
-    // Clean up the message
     let name = message
       .trim()
-      .replace(/[^\w\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .slice(0, 50) // Limit length
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 50)
       .trim();
 
-    // Capitalize first letter
     if (name.length > 0) {
       name = name.charAt(0).toUpperCase() + name.slice(1);
     }
 
-    // Fallback if empty
     if (!name) {
       name = `Session ${Date.now()}`;
     }
@@ -369,42 +304,24 @@ class SessionStoreClass {
     return name;
   }
 
-  /**
-   * Manually rename a session
-   */
   async renameSession(sessionId: string, newName: string): Promise<boolean> {
     const data = store.sessions[sessionId];
     if (!data) return false;
 
-    // Update in-memory
     setStore('sessions', sessionId, 'name', newName);
     
-    // Save to disk
     const result = await SessionStorage.renameSession(sessionId, newName);
-    if (result) {
-      log(`Session renamed: ${sessionId} -> "${newName}"`);
-    }
     
     return result;
   }
 
-  // ============================================================================
-  // Messaging
-  // ============================================================================
-
   async sendMessage(sessionId: string, content: string): Promise<void> {
     const data = store.sessions[sessionId];
     if (!data) {
-      log('sendMessage: no session data');
       return;
     }
 
-    log(`sendMessage: ${content}`);
-    log(`Session model: ${data.session.model?.id || 'none'}`);
-
-    // Check if model is selected
     if (!data.session.model) {
-      log('No model selected, showing error');
       const errorMessage: OldMessage = {
         id: `system-${Date.now()}`,
         role: 'agent',
@@ -416,31 +333,95 @@ class SessionStoreClass {
       return;
     }
 
-    // Add user message to the message store
-    const messageStore = getOrCreateMessageStore(sessionId);
-    messageStore.addUserMessage(content);
+    const agentBusy = isAgentBusy(data.session, sessionId);
 
-    // Also add to old message store for backwards compatibility
-    const message = createOldUserMessage(content);
-    setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
-    setStore('sessions', sessionId, 'lastActivity', Date.now());
+    if (!agentBusy) {
+      const messageStore = getOrCreateMessageStore(sessionId);
+      messageStore.addUserMessage(content);
 
-    // Auto-rename on first user message, save on all messages
-    const messages = messageStore.messages;
-    const userMessages = messages.filter((m: RichMessage) => m.role === 'user');
-    if (userMessages.length === 1) {
-      await this.autoRenameSession(sessionId, content);
+      const message = createOldUserMessage(content);
+      setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
+      setStore('sessions', sessionId, 'lastActivity', Date.now());
+
+      const messages = messageStore.messages;
+      const userMessages = messages.filter((m: RichMessage) => m.role === 'user');
+      if (userMessages.length === 1) {
+        await this.autoRenameSession(sessionId, content);
+      }
+      this.triggerSave(sessionId);
+
+      try {
+        await routeMessage(data.session, sessionId, content, 'build');
+      } catch (err) {
+      }
+    } else {
+      setStore('sessions', sessionId, 'lastActivity', Date.now());
+
+      try {
+        await routeMessage(data.session, sessionId, content, 'build');
+      } catch (err) {
+      }
     }
-    // Save session after every message
-    this.triggerSave(sessionId);
+  }
 
-    log('Calling session.sendUserMessage...');
-    try {
-      await data.session.sendUserMessage(content);
-      log('sendUserMessage completed');
-    } catch (err) {
-      logError('sendUserMessage error', err);
+  async sendMessageWithMode(sessionId: string, content: string, mode: InputMode, options?: {
+    forceSteer?: boolean;
+    forceFollowUp?: boolean;
+  }): Promise<void> {
+    const data = store.sessions[sessionId];
+    if (!data) {
+      return;
     }
+
+    if (!data.session.model) {
+      const errorMessage: OldMessage = {
+        id: `system-${Date.now()}`,
+        role: 'agent',
+        content: '⚠️ No model selected.\n\nPlease either:\n1. Use /model to select a model\n2. Set an API key environment variable (ANTHROPIC_API_KEY, OPENCODEGO_API_KEY, etc.)\n3. Use /login to save API keys to ~/.pi/agent/auth.json',
+        timestamp: Date.now(),
+        isStreaming: false,
+      };
+      setStore('sessions', sessionId, 'messages', (messages) => [...messages, errorMessage]);
+      return;
+    }
+
+    const agentBusy = isAgentBusy(data.session, sessionId);
+
+    if (!agentBusy) {
+      const messageStore = getOrCreateMessageStore(sessionId);
+      messageStore.addUserMessage(content);
+
+      const message = createOldUserMessage(content);
+      setStore('sessions', sessionId, 'messages', (messages) => [...messages, message]);
+      setStore('sessions', sessionId, 'lastActivity', Date.now());
+
+      const messages = messageStore.messages;
+      const userMessages = messages.filter((m: RichMessage) => m.role === 'user');
+      if (userMessages.length === 1) {
+        await this.autoRenameSession(sessionId, content);
+      }
+      this.triggerSave(sessionId);
+
+      try {
+        await routeMessage(data.session, sessionId, content, mode, options);
+      } catch (err) {
+      }
+    } else {
+      setStore('sessions', sessionId, 'lastActivity', Date.now());
+
+      try {
+        await routeMessage(data.session, sessionId, content, mode, options);
+      } catch (err) {
+      }
+    }
+  }
+
+  clearQueue(sessionId: string): { steering: string[]; followUp: string[] } {
+    const data = store.sessions[sessionId];
+    if (!data) {
+      return { steering: [], followUp: [] };
+    }
+    return clearQueue(data.session);
   }
 
   async handleCommand(sessionId: string, command: string, args: string): Promise<boolean> {
@@ -499,22 +480,11 @@ class SessionStoreClass {
     }));
   }
 
-  // ============================================================================
-  // Saved Session List (from disk)
-  // ============================================================================
-
-  /**
-   * Get list of all saved sessions from disk
-   */
   async listSavedSessions(): Promise<SessionMetadata[]> {
     return SessionStorage.listSessions();
   }
 
-  /**
-   * Delete a saved session from disk
-   */
   async deleteSavedSession(sessionId: string): Promise<boolean> {
-    // Close if active
     if (store.sessions[sessionId]) {
       this.closeSession(sessionId);
     }

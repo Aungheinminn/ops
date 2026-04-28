@@ -1,4 +1,4 @@
-import { Show, Index, createMemo } from 'solid-js';
+import { Show, Index, createMemo, createEffect } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { InputMode } from '../../../core/types.js';
 import { Colors } from '../../../core/types.js';
@@ -6,8 +6,12 @@ import type { KeyEvent, TextareaRenderable, ScrollBoxRenderable } from '@opentui
 import { getAutocompleteCommands } from '../../../cli/commands.js';
 
 interface InputBarProps {
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, mode: InputMode, options?: { forceSteer?: boolean; forceFollowUp?: boolean }) => void;
   currentModel?: { id: string };
+  isStreaming?: boolean;
+  queueCount?: number;
+  mode?: InputMode;
+  onModeChange?: (mode: InputMode) => void;
 }
 
 const SLASH_COMMANDS = getAutocompleteCommands();
@@ -21,8 +25,15 @@ export function InputBar(props: InputBarProps) {
     commandFilter: "",
     selectedCommand: 0,
     isInserting: false,
-    mode: "build" as InputMode,
+    mode: props.mode ?? "build" as InputMode,
     lineCount: 3,
+  });
+
+  // Sync with parent mode
+  createEffect(() => {
+    if (props.mode && props.mode !== state.mode) {
+      setState("mode", props.mode);
+    }
   });
   
   const filteredCommands = createMemo(() => {
@@ -103,7 +114,7 @@ export function InputBar(props: InputBarProps) {
   const handleSubmit = () => {
     const text = textarea?.plainText ?? "";
     if (text.trim()) {
-      props.onSubmit(text);
+      props.onSubmit(text, state.mode);
       try {
         textarea?.setText("");
       } catch {}
@@ -116,7 +127,9 @@ export function InputBar(props: InputBarProps) {
   
   const handleKey = (key: KeyEvent) => {
     if (!state.showCommands && key.name === "tab") {
-      setState("mode", state.mode === "build" ? "plan" : "build");
+      const newMode = state.mode === "build" ? "plan" : "build";
+      setState("mode", newMode);
+      props.onModeChange?.(newMode);
       key.preventDefault();
       return;
     }
@@ -228,7 +241,9 @@ export function InputBar(props: InputBarProps) {
           maxHeight={10}
           placeholder={state.showCommands 
             ? "Type to filter commands, Enter to select" 
-            : "Enter to send, Shift+Enter for new line, / for commands"
+            : props.isStreaming 
+              ? `Agent busy - Enter to queue (${props.queueCount || 0} queued)`
+              : "Enter to send, Shift+Enter for new line, / for commands"
           }
           textColor={Colors.white}
           focusedTextColor={Colors.white}
@@ -256,7 +271,10 @@ export function InputBar(props: InputBarProps) {
           <span style={{ fg: Colors.muted }}> (Tab to toggle)</span>
           <Show when={props.currentModel}>
             <span style={{ fg: Colors.muted }}> | Model: </span>
-            <span style={{ fg: Colors.primary }}>{props.currentModel?.id}</span>
+            <span style={{ fg: Colors.white }}>{props.currentModel?.id}</span>
+          </Show>
+          <Show when={props.isStreaming}>
+            <span style={{ fg: modeFg() }}> | Queued: {props.queueCount || 0}</span>
           </Show>
         </text>
       </box>

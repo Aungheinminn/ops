@@ -1,13 +1,4 @@
-/**
- * Event type definitions for pi-coding-agent integration
- * Based on @mariozechner/pi-coding-agent event system
- */
-
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
-
-// ============================================================================
-// Content Block Types (from pi-ai)
-// ============================================================================
 
 export interface TextContent {
   type: 'text';
@@ -32,15 +23,11 @@ export interface ToolCall {
 
 export interface ImageContent {
   type: 'image';
-  data: string; // base64
+  data: string;
   mimeType: string;
 }
 
 export type ContentItem = TextContent | ThinkingContent | ToolCall | ImageContent;
-
-// ============================================================================
-// Agent Message Types
-// ============================================================================
 
 export interface AgentMessage {
   role: 'assistant';
@@ -77,10 +64,6 @@ export interface ToolResultMessage {
 }
 
 export type Message = AgentMessage | UserMessage | ToolResultMessage;
-
-// ============================================================================
-// Streaming Content Events (AssistantMessageEvent)
-// ============================================================================
 
 export interface TextStartEvent {
   type: 'text_start';
@@ -167,12 +150,7 @@ export type AssistantMessageEvent =
   | DoneEvent
   | ErrorEvent;
 
-// Streaming content events alias for convenience
 export type StreamingContentEvent = AssistantMessageEvent;
-
-// ============================================================================
-// Agent Lifecycle Events
-// ============================================================================
 
 export interface AgentStartEvent {
   type: 'agent_start';
@@ -185,10 +163,6 @@ export interface AgentEndEvent {
 
 export type AgentLifecycleEvent = AgentStartEvent | AgentEndEvent;
 
-// ============================================================================
-// Turn Lifecycle Events
-// ============================================================================
-
 export interface TurnStartEvent {
   type: 'turn_start';
 }
@@ -200,10 +174,6 @@ export interface TurnEndEvent {
 }
 
 export type TurnLifecycleEvent = TurnStartEvent | TurnEndEvent;
-
-// ============================================================================
-// Message Lifecycle Events
-// ============================================================================
 
 export interface MessageStartEvent {
   type: 'message_start';
@@ -222,10 +192,6 @@ export interface MessageEndEvent {
 }
 
 export type MessageLifecycleEvent = MessageStartEvent | MessageUpdateEvent | MessageEndEvent;
-
-// ============================================================================
-// Tool Execution Events
-// ============================================================================
 
 export interface ToolExecutionStartEvent {
   type: 'tool_execution_start';
@@ -255,9 +221,11 @@ export type ToolExecutionEvent =
   | ToolExecutionUpdateEvent
   | ToolExecutionEndEvent;
 
-// ============================================================================
-// Session Events
-// ============================================================================
+export interface QueueState {
+  steering: readonly string[];
+  followUp: readonly string[];
+  totalCount: number;
+}
 
 export interface QueueUpdateEvent {
   type: 'queue_update';
@@ -305,10 +273,6 @@ export type SessionEvent =
   | AutoRetryStartEvent
   | AutoRetryEndEvent;
 
-// ============================================================================
-// Event Categories and Routing
-// ============================================================================
-
 export type EventCategory =
   | 'lifecycle'
   | 'turn'
@@ -324,19 +288,15 @@ export interface RoutedEvent {
   parentEvent?: AgentSessionEvent;
 }
 
-// ============================================================================
-// Event Handler Context
-// ============================================================================
-
 export interface EventHandlerContext {
-  // Callbacks for UI updates
+  sessionId: string;
   onLoadingChange: (loading: boolean) => void;
   onActivity: () => void;
-  onMessageUpdate?: () => void; // Called when messages are updated (for auto-save)
-
-  // Message store operations (will be injected from message store)
+  onMessageUpdate?: () => void;
+  onQueueUpdate?: (queueState: QueueState) => void;
   messageStore: {
     startMessage(messageId: string, role: 'assistant', timestamp: number): void;
+    addUserMessage(content: string): void;
     addContentBlock(messageId: string, block: unknown): void;
     updateContentBlock(messageId: string, contentIndex: number, delta: string): void;
     finalizeContentBlock(messageId: string, contentIndex: number): void;
@@ -345,13 +305,10 @@ export interface EventHandlerContext {
     updateToolExecution(toolCallId: string, partialResult: unknown): void;
     completeToolExecution(toolCallId: string, result: unknown, isError: boolean): void;
     getCurrentMessageId(): string | undefined;
+    getLastMessage(): unknown | undefined;
     getMessageByContentIndex(contentIndex: number): string | undefined;
   };
 }
-
-// ============================================================================
-// Type Guards
-// ============================================================================
 
 export function isTextDeltaEvent(event: AssistantMessageEvent): event is TextDeltaEvent {
   return event.type === 'text_delta';

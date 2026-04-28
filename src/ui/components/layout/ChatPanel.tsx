@@ -1,12 +1,15 @@
 import { Show, createMemo, createEffect, on } from 'solid-js';
-import type { SessionData } from '../../../core/types.js';
+import type { SessionData, InputMode } from '../../../core/types.js';
 import { Colors } from '../../../core/types.js';
 import { SessionStore } from '../../../core/session/index.ts';
 import { MessageList } from '../messages/MessageList.tsx';
+import { QueueIndicator } from '../QueueIndicator.tsx';
 import type { ScrollBoxRenderable } from '@opentui/core';
 
 interface ChatPanelProps {
   session?: SessionData;
+  queueState?: { steering: readonly string[]; followUp: readonly string[]; totalCount: number };
+  mode?: InputMode;
 }
 
 function EmptyState() {
@@ -59,10 +62,14 @@ export function ChatPanel(props: ChatPanelProps) {
     }
   ));
 
+  const isStreaming = createMemo(() => {
+    return props.session?.isLoading || false;
+  });
+
   return (
     <box flexGrow={1} flexDirection="column">
       <Show when={props.session} fallback={<EmptyState />}>
-        <scrollbox 
+        <scrollbox
           flexGrow={1}
           ref={(r: ScrollBoxRenderable) => { scrollboxRef = r; }}
           stickyScroll={true}
@@ -73,6 +80,11 @@ export function ChatPanel(props: ChatPanelProps) {
             <MessageList messages={messages()} />
           </box>
         </scrollbox>
+        <QueueIndicator
+          queueState={props.queueState ?? { steering: [], followUp: [], totalCount: 0 }}
+          isStreaming={isStreaming()}
+          mode={props.mode}
+        />
       </Show>
     </box>
   );
