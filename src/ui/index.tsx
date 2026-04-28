@@ -7,17 +7,16 @@ import { SessionStorage } from '../core/storage/session-storage.js';
 import type { SessionMetadata } from '../core/storage/types.js';
 import { configManager } from '../core/config.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
-import { useNavigation } from './hooks/useNavigation.js';
 import { parseCommand, isCommand, getCommandCategory } from './hooks/useCommands.js';
-import { Sidebar } from './components/layout/Sidebar.js';
 import { ChatPanel } from './components/layout/ChatPanel.js';
 import { InputBar } from './components/input/InputBar.js';
-import { ApiKeyDialog, ModelSelector, SettingsDialog } from './components/dialogs/index.js';
+import { ApiKeyDialog, ModelSelector, SettingsDialog, SessionManager } from './components/dialogs/index.js';
 
 const DIALOG_COMMANDS = new Set([
   'login',
   'model',
   'settings',
+  'sessions',
   'scoped-models',
   'tree',
   'fork',
@@ -27,7 +26,6 @@ const DIALOG_COMMANDS = new Set([
 const DIRECT_AGENT_COMMANDS = new Set([
   'logout',
   'copy',
-  'session',
   'compact',
   'reload',
   'changelog',
@@ -43,7 +41,6 @@ interface AppProps {
 function App(props: AppProps) {
   const dimensions = useTerminalDimensions();
   const renderer = useRenderer();
-  const { state: navState, actions: navActions } = useNavigation();
 
   const [activeDialog, setActiveDialog] = createSignal<{
     type: string;
@@ -87,6 +84,43 @@ function App(props: AppProps) {
   const activeIndex = createMemo(() => {
     const ids = allSessionIds();
     return ids.indexOf(activeId() || '');
+  });
+
+  // Convert sessions to SessionListItem format for SessionManager
+  const sessionListItems = createMemo(() => {
+    const items: Record<string, any> = {};
+    const allIds = allSessionIds();
+    
+    for (const id of allIds) {
+      const session = sessions()[id];
+      if (session) {
+        items[id] = {
+          id: session.id,
+          name: session.name,
+          cwd: session.cwd,
+          lastActivity: session.lastActivity,
+          messages: session.messages,
+          isLoading: session.isLoading,
+          isActive: id === activeId(),
+        };
+      } else {
+        // Check in saved sessions
+        const saved = savedSessions().find(s => s.id === id);
+        if (saved) {
+          items[id] = {
+            id: saved.id,
+            name: saved.name,
+            cwd: saved.cwd,
+            lastActivity: saved.updatedAt,
+            messages: [],
+            isLoading: false,
+            isActive: false,
+          };
+        }
+      }
+    }
+    
+    return items;
   });
 
   onMount(async () => {
@@ -140,52 +174,12 @@ function App(props: AppProps) {
       }
     },
 
-
-
-    onFocusSidebar: () => {
+    onOpenSessionManager: () => {
       if (activeDialog()) return;
-      if (!navState.sidebar.focused) {
-        navActions.focusSidebar(allSessionIds().length, activeIndex());
-      }
+      setActiveDialog({ type: 'sessions', args: '' });
     },
 
-    sidebarFocused: () => navState.sidebar.focused,
     dialogFocused: () => !!activeDialog(),
-
-    onSidebarNavigate: (direction) => {
-      const maxIndex = allSessionIds().length - 1;
-      if (direction === 'up') {
-        navActions.navigateUp(maxIndex);
-      } else {
-        navActions.navigateDown(maxIndex);
-      }
-    },
-
-    onSidebarSelect: async () => {
-      const ids = allSessionIds();
-      const activeIds = sessionIds();
-      const selectedId = ids[navState.sidebar.selectedIndex];
-      if (selectedId) {
-        if (!activeIds.includes(selectedId)) {
-          const savedSession = savedSessions().find(s => s.id === selectedId);
-          if (savedSession) {
-            console.log(`Loading saved session: ${savedSession.name}`);
-            const loadedSession = await SessionStore.loadSavedSession(selectedId);
-            if (loadedSession) {
-              const newSessionId = await SessionStore.createSessionFromSaved(loadedSession, props.defaultModel);
-              if (newSessionId) {
-                navActions.defocusSidebar();
-                return;
-              }
-            }
-          }
-        }
-        SessionStore.switchSession(selectedId);
-        navActions.defocusSidebar();
-      }
-    },
-
-    onSidebarDefocus: () => navActions.defocusSidebar(),
 
     onRenameSession: () => {
       if (activeDialog()) return;
@@ -232,6 +226,11 @@ function App(props: AppProps) {
         }
 
         case 'session': {
+          // Check if this is the sessions dialog command
+          if (parsed.cmd === 'sessions') {
+            setActiveDialog({ type: 'sessions', args: parsed.args });
+            return;
+          }
           const handled = await SessionStore.handleCommand(id, parsed.cmd, parsed.args);
           if (handled) return;
           break;
@@ -268,15 +267,6 @@ function App(props: AppProps) {
         const provider = args.trim() || 'anthropic';
         sessionData.services.authStorage.logout(provider);
         await SessionStore.sendMessage(sessionId, `Logged out from ${provider}`);
-        return;
-      }
-
-      case 'session': {
-        const info = `Session: ${sessionData.name}
-ID: ${sessionData.id}
-CWD: ${sessionData.cwd}
-Messages: ${sessionData.messages.length}`;
-        await SessionStore.sendMessage(sessionId, info);
         return;
       }
 
@@ -350,167 +340,214 @@ Messages: ${sessionData.messages.length}`;
     setActiveDialog(null);
   };
 
+  const handleSessionSelect = async (sessionId: string, isActiveSession: boolean) => {
+    const activeIds = sessionIds();
+    
+    if (!isActiveSession && !activeIds.includes(sessionId)) {
+      // Need to load saved session
+      const savedSession = savedSessions().find(s => s.id === sessionId);
+      if (savedSession) {
+        console.log(`Loading saved session: ${savedSession.name}`);
+        const loadedSession = await SessionStore.loadSavedSession(sessionId);
+        if (loadedSession) {
+          await SessionStore.createSessionFromSaved(loadedSession, props.defaultModel);
+        }
+      }
+    } else {
+      SessionStore.switchSession(sessionId);
+    }
+    setActiveDialog(null);
+  };
+
+  const handleSessionDelete = async (sessionId: string) => {
+    await SessionStore.deleteSavedSession(sessionId);
+    // Refresh saved sessions list
+    const diskSessions = await SessionStorage.listSessions();
+    setSavedSessions(diskSessions);
+  };
+
+  const handleSessionRename = (sessionId: string) => {
+    // Open rename dialog
+    setActiveDialog({ type: 'rename', args: '' });
+  };
+
+  const renderDialog = () => {
+    const dialog = activeDialog();
+    const sessionData = activeSession();
+    
+    if (!dialog || !sessionData) return null;
+
+    switch (dialog.type) {
+      case 'login':
+        return (
+          <ApiKeyDialog
+            authStorage={sessionData.services.authStorage}
+            onComplete={(success) => handleDialogComplete(success)}
+            onCancel={handleDialogCancel}
+          />
+        );
+
+      case 'model':
+        return (
+          <ModelSelector
+            modelRegistry={sessionData.services.modelRegistry}
+            currentModel={sessionData.session.model}
+            onSelect={(model) => handleDialogComplete(model)}
+            onCancel={handleDialogCancel}
+          />
+        );
+
+      case 'settings':
+        return (
+          <SettingsDialog
+            settingsManager={sessionData.services.settingsManager}
+            onComplete={() => handleDialogComplete(true)}
+            onCancel={handleDialogCancel}
+          />
+        );
+
+      case 'sessions':
+        return (
+          <SessionManager
+            sessions={sessionListItems()}
+            activeId={activeId()}
+            savedSessions={savedSessions()}
+            onSelect={handleSessionSelect}
+            onDelete={handleSessionDelete}
+            onRename={handleSessionRename}
+            onCancel={handleDialogCancel}
+          />
+        );
+
+      case 'scoped-models':
+      case 'tree':
+      case 'fork':
+      case 'resume':
+        return (
+          <box
+            height={10}
+            border={true}
+            borderStyle="rounded"
+            borderColor="#3b82f6"
+            flexDirection="column"
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <text>
+              <span style={{ bold: true, fg: "#3b82f6" }}>
+                {`Command: /${dialog.type}`}
+              </span>
+            </text>
+            <text>
+              <span style={{ fg: "#6b7280" }}>
+                {dialog.args ? `Args: ${dialog.args}` : "No arguments"}
+              </span>
+            </text>
+            <box flexGrow={1} />
+            <text>
+              <span style={{ fg: "#fbbf24" }}>
+                This dialog will be implemented in a future phase.
+              </span>
+            </text>
+            <text>
+              <span style={{ fg: "#6b7280" }}>
+                Press Esc or Enter to close
+              </span>
+            </text>
+          </box>
+        );
+
+      case 'rename': {
+        const session = activeSession();
+        let textareaRef: { plainText: string; focus: () => void } | undefined;
+        
+        const handleRenameSubmit = () => {
+          const id = activeId();
+          const newName = textareaRef?.plainText.trim() || '';
+          if (id && newName) {
+            SessionStore.renameSession(id, newName);
+          }
+          setActiveDialog(null);
+        };
+        
+        return (
+          <box
+            height={10}
+            border={true}
+            borderStyle="rounded"
+            borderColor="#3b82f6"
+            flexDirection="column"
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <text>
+              <span style={{ bold: true, fg: "#3b82f6" }}>Rename Session</span>
+            </text>
+            <text>
+              <span style={{ fg: "#6b7280" }}>Current: {session?.name || 'Unknown'}</span>
+            </text>
+            <box height={1} />
+            <textarea
+              flexGrow={1}
+              minHeight={1}
+              maxHeight={1}
+              placeholder="Enter new session name..."
+              textColor={Colors.white}
+              focusedTextColor={Colors.white}
+              keyBindings={[
+                { name: "return", action: "submit" },
+              ]}
+              onSubmit={handleRenameSubmit}
+              ref={(val: { plainText: string; focus: () => void }) => {
+                textareaRef = val;
+                setTimeout(() => val?.focus(), 0);
+              }}
+            />
+            <box flexGrow={1} />
+            <text>
+              <span style={{ fg: "#6b7280" }}>Press Enter to save, Esc to cancel</span>
+            </text>
+          </box>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <box
       width={dimensions().width}
       height={dimensions().height}
-      flexDirection="row"
+      flexDirection="column"
     >
-      <Sidebar
-        sessions={sessions()}
-        activeId={activeId()}
-        focused={navState.sidebar.focused}
-        selectedIndex={navState.sidebar.selectedIndex}
-        allSessionIds={allSessionIds()}
-        savedSessions={savedSessions()}
-      />
+      {/* Main content layer - always rendered */}
       <box flexGrow={1} flexDirection="column">
         <ChatPanel session={activeSession()} queueState={activeQueueState()} mode={inputMode()} />
-
-        <Show
-          when={activeDialog()}
-          fallback={
-            <InputBar
-              onSubmit={handleInput}
-              currentModel={activeSession()?.session?.model}
-              isStreaming={activeSession()?.isLoading}
-              queueCount={queueCount()}
-              mode={inputMode()}
-              onModeChange={setInputMode}
-            />
-          }
-        >
-              {(dialog) => {
-                const sessionData = activeSession();
-                if (!sessionData) return null;
-
-                switch (dialog().type) {
-                  case 'login':
-                    return (
-                      <ApiKeyDialog
-                        authStorage={sessionData.services.authStorage}
-                        onComplete={(success) => handleDialogComplete(success)}
-                        onCancel={handleDialogCancel}
-                      />
-                    );
-
-                  case 'model':
-                    return (
-                      <ModelSelector
-                        modelRegistry={sessionData.services.modelRegistry}
-                        currentModel={sessionData.session.model}
-                        onSelect={(model) => handleDialogComplete(model)}
-                        onCancel={handleDialogCancel}
-                      />
-                    );
-
-                  case 'settings':
-                    return (
-                      <SettingsDialog
-                        settingsManager={sessionData.services.settingsManager}
-                        onComplete={() => handleDialogComplete(true)}
-                        onCancel={handleDialogCancel}
-                      />
-                    );
-
-                  case 'scoped-models':
-                  case 'tree':
-                  case 'fork':
-                  case 'resume':
-                    return (
-                      <box
-                        height={10}
-                        border={true}
-                        borderStyle="rounded"
-                        borderColor="#3b82f6"
-                        flexDirection="column"
-                        paddingLeft={1}
-                        paddingRight={1}
-                      >
-                        <text>
-                          <span style={{ bold: true, fg: "#3b82f6" }}>
-                            {`Command: /${dialog().type}`}
-                          </span>
-                        </text>
-                        <text>
-                          <span style={{ fg: "#6b7280" }}>
-                            {dialog().args ? `Args: ${dialog().args}` : "No arguments"}
-                          </span>
-                        </text>
-                        <box flexGrow={1} />
-                        <text>
-                          <span style={{ fg: "#fbbf24" }}>
-                            This dialog will be implemented in a future phase.
-                          </span>
-                        </text>
-                        <text>
-                          <span style={{ fg: "#6b7280" }}>
-                            Press Esc or Enter to close
-                          </span>
-                        </text>
-                      </box>
-                    );
-
-                  case 'rename': {
-                    const session = activeSession();
-                    let textareaRef: { plainText: string; focus: () => void } | undefined;
-                    
-                    const handleRenameSubmit = () => {
-                      const id = activeId();
-                      const newName = textareaRef?.plainText.trim() || '';
-                      if (id && newName) {
-                        SessionStore.renameSession(id, newName);
-                      }
-                      setActiveDialog(null);
-                    };
-                    
-                    return (
-                      <box
-                        height={10}
-                        border={true}
-                        borderStyle="rounded"
-                        borderColor="#3b82f6"
-                        flexDirection="column"
-                        paddingLeft={1}
-                        paddingRight={1}
-                      >
-                        <text>
-                          <span style={{ bold: true, fg: "#3b82f6" }}>Rename Session</span>
-                        </text>
-                        <text>
-                          <span style={{ fg: "#6b7280" }}>Current: {session?.name || 'Unknown'}</span>
-                        </text>
-                        <box height={1} />
-                        <textarea
-                          flexGrow={1}
-                          minHeight={1}
-                          maxHeight={1}
-                          placeholder="Enter new session name..."
-                          textColor={Colors.white}
-                          focusedTextColor={Colors.white}
-                          keyBindings={[
-                            { name: "return", action: "submit" },
-                          ]}
-                          onSubmit={handleRenameSubmit}
-                          ref={(val: { plainText: string; focus: () => void }) => {
-                            textareaRef = val;
-                            setTimeout(() => val?.focus(), 0);
-                          }}
-                        />
-                        <box flexGrow={1} />
-                        <text>
-                          <span style={{ fg: "#6b7280" }}>Press Enter to save, Esc to cancel</span>
-                        </text>
-                      </box>
-                    );
-                  }
-
-                  default:
-                    return null;
-                }
-              }}
-            </Show>
+        <InputBar
+          onSubmit={handleInput}
+          currentModel={activeSession()?.session?.model}
+          isStreaming={activeSession()?.isLoading}
+          queueCount={queueCount()}
+          mode={inputMode()}
+          onModeChange={setInputMode}
+        />
       </box>
+
+      {/* Dialog overlay layer - rendered on top when active */}
+      <Show when={activeDialog()}>
+        <box
+          position="absolute"
+          width={dimensions().width}
+          height={dimensions().height}
+          flexDirection="row"
+          justifyContent="center"
+          alignItems="center"
+        >
+          {renderDialog()}
+        </box>
+      </Show>
     </box>
   );
 }

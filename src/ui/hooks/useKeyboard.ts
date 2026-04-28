@@ -10,14 +10,10 @@ export interface KeyboardConfig {
   onSwitchSession?: () => void;
   onRenameSession?: () => void;
   onQuit?: () => void;
-  onFocusSidebar?: () => void;
+  onOpenSessionManager?: () => void;
   onEscape?: () => void;
   onEnter?: () => void;
-  sidebarFocused?: Accessor<boolean>;
   dialogFocused?: Accessor<boolean>;
-  onSidebarNavigate?: (direction: 'up' | 'down') => void;
-  onSidebarSelect?: () => void;
-  onSidebarDefocus?: () => void;
   onDialogNavigate?: (direction: 'up' | 'down') => void;
 }
 
@@ -28,11 +24,6 @@ export function useKeyboard(config: KeyboardConfig): void {
     if (config.dialogFocused?.() && !e.ctrl) {
       const handled = handleDialogKeys(e, config);
       if (handled) return;
-    }
-
-    if (config.sidebarFocused?.() && !e.ctrl) {
-      handleSidebarKeys(e, config);
-      return;
     }
 
     if (e.ctrl) {
@@ -52,30 +43,6 @@ function handleDialogKeys(e: KeyEvent, config: KeyboardConfig): boolean {
   }
 }
 
-function handleSidebarKeys(e: KeyEvent, config: KeyboardConfig): void {
-  switch (e.name) {
-    case 'up':
-      config.onSidebarNavigate?.('up');
-      e.preventDefault();
-      break;
-    case 'down':
-      config.onSidebarNavigate?.('down');
-      e.preventDefault();
-      break;
-    case 'return':
-      config.onSidebarSelect?.();
-      e.preventDefault();
-      break;
-    case 'escape':
-      config.onSidebarDefocus?.();
-      e.preventDefault();
-      break;
-    default:
-      config.onSidebarDefocus?.();
-      break;
-  }
-}
-
 function handleGlobalKeys(e: KeyEvent, config: KeyboardConfig): void {
   switch (e.name) {
     case 'n':
@@ -91,7 +58,7 @@ function handleGlobalKeys(e: KeyEvent, config: KeyboardConfig): void {
       config.onQuit?.();
       break;
     case 's':
-      config.onFocusSidebar?.();
+      config.onOpenSessionManager?.();
       e.preventDefault();
       break;
     case 'r':
