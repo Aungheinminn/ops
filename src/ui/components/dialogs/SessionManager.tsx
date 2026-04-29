@@ -158,12 +158,6 @@ export function SessionManager(props: SessionManagerProps) {
 
   const maxIndex = createMemo(() => Math.max(0, allNavigableSessions().length - 1));
 
-  onMount(() => {
-    setTimeout(() => {
-      boxRef?.focus();
-    }, 50);
-  });
-
   createEffect(() => {
     const idx = selectedIndex();
     if (scrollboxRef) {
@@ -257,7 +251,10 @@ export function SessionManager(props: SessionManagerProps) {
 
   return (
     <box
-      ref={(r) => { boxRef = r as { focus(): void }; }}
+      ref={(r) => { 
+        boxRef = r as { focus(): void }; 
+        setTimeout(() => (r as { focus(): void })?.focus(), 50);
+      }}
       width="70%"
       minWidth={60}
       maxHeight={30}
