@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Index, createEffect, onMount, Show, For } from 'solid-js';
+import { createSignal, createMemo, createEffect, onMount, Show, For } from 'solid-js';
 import type { KeyEvent } from '@opentui/core';
 import { Colors } from '../../../core/types.js';
 import type { SessionListItem } from '../../../core/session/types.js';
@@ -18,6 +18,12 @@ interface SessionGroup {
   date: string;
   sessions: SessionListItem[];
   isActive: boolean;
+}
+
+interface SelectOption {
+  name: string;
+  value: string;
+  description: string;
 }
 
 const SPINNER_FRAMES = ['-', '\\', '|', '/'];
@@ -53,14 +59,12 @@ function formatTime(timestamp: number): string {
 }
 
 export function SessionManager(props: SessionManagerProps) {
-  let boxRef: { focus(): void } | undefined;
-  let scrollboxRef: { scrollTop: number; scrollTo: (line: number) => void } | undefined;
+  let selectRef: unknown;
 
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [deleteConfirmationId, setDeleteConfirmationId] = createSignal<string | null>(null);
   const [frame, setFrame] = createSignal(0);
   const [searchQuery, setSearchQuery] = createSignal('');
-  const [isSearching, setIsSearching] = createSignal(false);
 
   onMount(() => {
     const interval = setInterval(() => {
@@ -138,49 +142,72 @@ export function SessionManager(props: SessionManagerProps) {
       .filter(g => g.sessions.length > 0);
   });
 
-  const allNavigableSessions = createMemo(() => {
-    const result: { session: SessionListItem; groupIndex: number; sessionIndex: number; isActive: boolean }[] = [];
+  const selectOptions = createMemo<SelectOption[]>(() => {
+    const options: SelectOption[] = [];
+    const maxWidth = 55;
     
-    activeGroups().forEach((group, gIdx) => {
-      group.sessions.forEach((session, sIdx) => {
-        result.push({ session, groupIndex: gIdx, sessionIndex: sIdx, isActive: true });
+    activeGroups().forEach((group) => {
+      options.push({ name: group.date, value: `header-${group.date}`, description: '' });
+      group.sessions.forEach((session) => {
+        const showDeleteConfirm = deleteConfirmationId() === session.id;
+        const prefix = showDeleteConfirm ? '[DELETE?] ' : (session.isLoading ? SPINNER_FRAMES[frame()] + ' ' : '');
+        const timeStr = formatTime(session.lastActivity);
+        const sessionName = `${prefix}${session.name}`;
+        const padding = Math.max(1, maxWidth - sessionName.length - timeStr.length);
+        const name = sessionName + ' '.repeat(padding) + timeStr;
+        options.push({ name, value: session.id, description: '' });
       });
     });
-    
-    inactiveGroups().forEach((group, gIdx) => {
-      group.sessions.forEach((session, sIdx) => {
-        result.push({ session, groupIndex: gIdx, sessionIndex: sIdx, isActive: false });
+
+    if (activeGroups().length > 0 && inactiveGroups().length > 0) {
+      options.push({ name: '─'.repeat(maxWidth), value: 'divider', description: '' });
+    }
+
+    inactiveGroups().forEach((group) => {
+      options.push({ name: group.date, value: `header-${group.date}-inactive`, description: '' });
+      group.sessions.forEach((session) => {
+        const showDeleteConfirm = deleteConfirmationId() === session.id;
+        const prefix = showDeleteConfirm ? '[DELETE?] ' : '';
+        const timeStr = formatTime(session.lastActivity);
+        const sessionName = `${prefix}${session.name}`;
+        const padding = Math.max(1, maxWidth - sessionName.length - timeStr.length);
+        const name = sessionName + ' '.repeat(padding) + timeStr;
+        options.push({ name, value: session.id, description: '' });
       });
     });
-    
-    return result;
+
+    return options;
   });
 
-  const maxIndex = createMemo(() => Math.max(0, allNavigableSessions().length - 1));
-
-  createEffect(() => {
-    const idx = selectedIndex();
-    if (scrollboxRef) {
-      const viewportHeight = 12;
-      const scrollTop = scrollboxRef.scrollTop;
-      const scrollBottom = scrollTop + viewportHeight;
-
-      if (idx < scrollTop) {
-        scrollboxRef.scrollTo(idx);
-      } else if (idx >= scrollBottom) {
-        scrollboxRef.scrollTo(idx - viewportHeight + 1);
+  const sessionIdFromIndex = (index: number): string | null => {
+    const options = selectOptions();
+    if (index >= 0 && index < options.length) {
+      const value = options[index].value;
+      if (!value.startsWith('header-') && value !== 'divider') {
+        return value;
       }
     }
+    return null;
+  };
+
+  const activeSessionIds = createMemo(() => {
+    const ids = new Set<string>();
+    activeGroups().forEach(g => g.sessions.forEach(s => ids.add(s.id)));
+    return ids;
   });
+
+  const handleSelectChange = (index: number) => {
+    setSelectedIndex(index);
+    setDeleteConfirmationId(null);
+  };
 
   const handleKey = (e: KeyEvent) => {
     const name = e.name?.toLowerCase();
     const ctrl = e.ctrl;
 
     if (name === 'escape') {
-      if (isSearching() && searchQuery()) {
+      if (searchQuery()) {
         setSearchQuery('');
-        setIsSearching(false);
         setSelectedIndex(0);
       } else {
         props.onCancel();
@@ -190,13 +217,13 @@ export function SessionManager(props: SessionManagerProps) {
     }
 
     if (ctrl && name === 'd') {
-      const selected = allNavigableSessions()[selectedIndex()];
-      if (selected) {
-        if (deleteConfirmationId() === selected.session.id) {
-          props.onDelete(selected.session.id);
+      const sessionId = sessionIdFromIndex(selectedIndex());
+      if (sessionId) {
+        if (deleteConfirmationId() === sessionId) {
+          props.onDelete(sessionId);
           setDeleteConfirmationId(null);
         } else {
-          setDeleteConfirmationId(selected.session.id);
+          setDeleteConfirmationId(sessionId);
         }
       }
       e.preventDefault();
@@ -204,9 +231,19 @@ export function SessionManager(props: SessionManagerProps) {
     }
 
     if (ctrl && name === 'r') {
-      const selected = allNavigableSessions()[selectedIndex()];
-      if (selected) {
-        props.onRename(selected.session.id, '');
+      const sessionId = sessionIdFromIndex(selectedIndex());
+      if (sessionId) {
+        props.onRename(sessionId, '');
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (name === 'return') {
+      const sessionId = sessionIdFromIndex(selectedIndex());
+      if (sessionId) {
+        const isActive = activeSessionIds().has(sessionId);
+        props.onSelect(sessionId, isActive);
       }
       e.preventDefault();
       return;
@@ -221,40 +258,17 @@ export function SessionManager(props: SessionManagerProps) {
       return;
     }
 
-    if (name === 'up') {
-      setSelectedIndex(i => (i > 0 ? i - 1 : maxIndex()));
-      setDeleteConfirmationId(null);
-      e.preventDefault();
-    } else if (name === 'down') {
-      setSelectedIndex(i => (i < maxIndex() ? i + 1 : 0));
-      setDeleteConfirmationId(null);
-      e.preventDefault();
-    } else if (name === 'return') {
-      const selected = allNavigableSessions()[selectedIndex()];
-      if (selected) {
-        props.onSelect(selected.session.id, selected.isActive);
-      }
-      e.preventDefault();
-    } else if (name && name.length === 1 && !ctrl && !e.meta) {
-      setIsSearching(true);
+    if (name && name.length === 1 && !ctrl && !e.meta) {
       setSearchQuery(q => q + name);
       setSelectedIndex(0);
       setDeleteConfirmationId(null);
       e.preventDefault();
+      return;
     }
-  };
-
-  const isSelected = (sessionId: string) => {
-    const selected = allNavigableSessions()[selectedIndex()];
-    return selected?.session.id === sessionId;
   };
 
   return (
     <box
-      ref={(r) => { 
-        boxRef = r as { focus(): void }; 
-        setTimeout(() => (r as { focus(): void })?.focus(), 50);
-      }}
       width="70%"
       minWidth={60}
       maxHeight={30}
@@ -265,8 +279,6 @@ export function SessionManager(props: SessionManagerProps) {
       flexDirection="column"
       paddingLeft={2}
       paddingRight={2}
-      focusable={true}
-      onKeyDown={handleKey}
     >
       <box flexDirection="row" justifyContent="space-between" alignItems="center">
         <text>
@@ -299,122 +311,24 @@ export function SessionManager(props: SessionManagerProps) {
 
       <box height={1} />
 
-      <scrollbox
-        flexDirection="column"
+      <select
+        ref={(r) => { 
+          selectRef = r;
+          setTimeout(() => (r as { focus(): void })?.focus(), 50);
+        }}
         flexGrow={1}
         height={16}
-        scrollbarOptions={{ visible: false }}
-        ref={(r) => { scrollboxRef = r as { scrollTop: number; scrollTo: (line: number) => void }; }}
-      >
-        <Show when={activeGroups().length > 0}>
-          <box flexDirection="column">
-            <For each={activeGroups()}>
-              {(group) => (
-                <box flexDirection="column">
-                  <text>
-                    <span style={{ fg: Colors.primary, bold: true }}>{group.date}</span>
-                  </text>
-                  <For each={group.sessions}>
-                    {(session) => {
-                      const isSel = isSelected(session.id);
-                      const isActive = props.activeId === session.id;
-                      const showDeleteConfirm = deleteConfirmationId() === session.id;
-                      
-                      return (
-                        <box
-                          height={1}
-                          backgroundColor={isActive ? '#eebb99' : (isSel ? Colors.primaryDark : undefined)}
-                          flexDirection="row"
-                          alignItems="center"
-                          paddingLeft={1}
-                        >
-                          <text flexGrow={1}>
-                            <span style={{ 
-                              fg: isActive ? '#000000' : (isSel ? Colors.white : Colors.light),
-                              bold: isSel || isActive
-                            }}>
-                              {isSel ? '→ ' : '  '}
-                              {session.isLoading ? `${SPINNER_FRAMES[frame()]} ` : ''}
-                              {showDeleteConfirm ? `[DELETE?] ` : ''}
-                              {session.name}
-                            </span>
-                          </text>
-                          <text flexShrink={0}>
-                            <span style={{ 
-                              fg: isActive ? '#666666' : Colors.muted,
-                              dim: true 
-                            }}>
-                              {formatTime(session.lastActivity)}
-                            </span>
-                          </text>
-                        </box>
-                      );
-                    }}
-                  </For>
-                </box>
-              )}
-            </For>
-          </box>
-        </Show>
-
-        <Show when={activeGroups().length > 0 && inactiveGroups().length > 0}>
-          <box width="100%" height={1} border={true} borderStyle="single" borderColor={Colors.border} />
-        </Show>
-
-        <Show when={inactiveGroups().length > 0}>
-          <box flexDirection="column">
-            <For each={inactiveGroups()}>
-              {(group) => (
-                <box flexDirection="column">
-                  <text>
-                    <span style={{ fg: Colors.primary, bold: true }}>{group.date}</span>
-                  </text>
-                  <For each={group.sessions}>
-                    {(session) => {
-                      const isSel = isSelected(session.id);
-                      const showDeleteConfirm = deleteConfirmationId() === session.id;
-                      
-                      return (
-                        <box
-                          height={1}
-                          backgroundColor={isSel ? Colors.primaryDark : undefined}
-                          flexDirection="row"
-                          alignItems="center"
-                          paddingLeft={1}
-                        >
-                          <text flexGrow={1}>
-                            <span style={{ 
-                              fg: isSel ? Colors.white : Colors.light,
-                              bold: isSel
-                            }}>
-                              {isSel ? '→ ' : '  '}
-                              {showDeleteConfirm ? `[DELETE?] ` : ''}
-                              {session.name}
-                            </span>
-                          </text>
-                          <text flexShrink={0}>
-                            <span style={{ fg: Colors.muted, dim: true }}>
-                              {formatTime(session.lastActivity)}
-                            </span>
-                          </text>
-                        </box>
-                      );
-                    }}
-                  </For>
-                </box>
-              )}
-            </For>
-          </box>
-        </Show>
-
-        <Show when={allNavigableSessions().length === 0}>
-          <box height={3} justifyContent="center" alignItems="center">
-            <text>
-              <span style={{ fg: Colors.muted }}>No sessions found</span>
-            </text>
-          </box>
-        </Show>
-      </scrollbox>
+        options={selectOptions()}
+        selectedIndex={selectedIndex()}
+        onChange={handleSelectChange}
+        onKeyDown={handleKey}
+        backgroundColor="#1e1e2e"
+        textColor={Colors.light}
+        selectedBackgroundColor="#eebb99"
+        selectedTextColor="#000000"
+        focusedBackgroundColor={Colors.primaryDark}
+        focusedTextColor={Colors.white}
+      />
 
       <box height={1} />
 
