@@ -174,7 +174,7 @@ export function SessionManager(props: SessionManagerProps) {
   });
 
   const handleKey = (e: KeyEvent) => {
-    const name = e.name;
+    const name = e.name?.toLowerCase();
     const ctrl = e.ctrl;
 
     if (name === 'escape') {
