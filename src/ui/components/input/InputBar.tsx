@@ -12,6 +12,7 @@ interface InputBarProps {
   queueCount?: number;
   mode?: InputMode;
   onModeChange?: (mode: InputMode) => void;
+  inputRef?: (ref: { focus: () => void }) => void;
 }
 
 const SLASH_COMMANDS = getAutocompleteCommands();
@@ -29,7 +30,7 @@ export function InputBar(props: InputBarProps) {
     lineCount: 3,
   });
 
-  // Sync with parent mode
+  
   createEffect(() => {
     if (props.mode && props.mode !== state.mode) {
       setState("mode", props.mode);
@@ -256,6 +257,9 @@ export function InputBar(props: InputBarProps) {
           onContentChange={checkForSlashCommand}
           ref={(val: TextareaRenderable) => {
             textarea = val;
+            props.inputRef?.({
+              focus: () => textarea?.focus(),
+            });
             setTimeout(() => textarea?.focus(), 0);
           }}
         />

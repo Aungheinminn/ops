@@ -1,7 +1,4 @@
-/**
- * Message Store - SolidJS store for rich messages with content blocks
- * Provides operations for creating, updating, and managing messages
- */
+ 
 
 import { createStore, produce } from 'solid-js/store';
 import { ulid } from 'ulid';
@@ -17,9 +14,9 @@ import type {
 } from './types.ts';
 import { log, logError } from '../logger.ts';
 
-// ============================================================================
-// Store State
-// ============================================================================
+
+
+
 
 interface MessageStoreState {
   messages: RichMessage[];
@@ -37,46 +34,46 @@ interface ToolExecutionState {
   isComplete: boolean;
 }
 
-// ============================================================================
-// Message Store Interface
-// ============================================================================
+
+
+
 
 export interface MessageStore {
-  // Core operations
+  
   messages: RichMessage[];
   
-  // Message lifecycle
+  
   startMessage(messageId: string, role: 'assistant', timestamp: number): void;
   completeMessage(messageId: string): void;
   
-  // Content block operations
+  
   addContentBlock(messageId: string, block: ContentBlock): void;
   updateContentBlock(messageId: string, contentIndex: number, delta: string): void;
   finalizeContentBlock(messageId: string, contentIndex: number): void;
   
-  // User messages
+  
   addUserMessage(content: string): void;
   
-  // Tool execution operations
+  
   addToolExecution(toolCallId: string, toolName: string, args: unknown): void;
   updateToolExecution(toolCallId: string, partialResult: unknown): void;
   completeToolExecution(toolCallId: string, result: unknown, isError: boolean): void;
   
-  // Query operations
+  
   getCurrentMessageId(): string | undefined;
   getMessageById(messageId: string): RichMessage | undefined;
   getLastAssistantMessage(): AssistantRichMessage | undefined;
   getLastMessage(): RichMessage | undefined;
   getToolExecution(toolCallId: string): ToolExecutionState | undefined;
   
-    // Utility
+    
     clear(): void;
     restoreMessages(messages: RichMessage[]): void;
 }
 
-// ============================================================================
-// Message Store Implementation
-// ============================================================================
+
+
+
 
 export function createMessageStore(): MessageStore {
   const [state, setState] = createStore<MessageStoreState>({
@@ -90,9 +87,9 @@ export function createMessageStore(): MessageStore {
       return state.messages;
     },
 
-    // -------------------------------------------------------------------------
-    // Message Lifecycle
-    // -------------------------------------------------------------------------
+    
+    
+    
 
     startMessage(messageId: string, role: 'assistant', timestamp: number): void {
       log(`Starting message: ${messageId}`);

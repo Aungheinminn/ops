@@ -8,10 +8,10 @@ export interface OpsConfig {
   [key: string]: unknown;
 }
 
-// OPS-specific config directory: ~/.pi/ops/
+
 const opsConfigDir = join(homedir(), '.pi', 'ops');
 
-// Ensure OPS config dir exists
+
 if (!existsSync(opsConfigDir)) {
   mkdirSync(opsConfigDir, { recursive: true, mode: 0o700 });
 }

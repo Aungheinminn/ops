@@ -20,11 +20,11 @@ interface SessionGroup {
   isActive: boolean;
 }
 
-interface SelectOption {
-  name: string;
-  value: string;
-  description: string;
-  disabled?: boolean;
+interface ListItem {
+  type: 'header' | 'session';
+  id: string;
+  displayText: string;
+  timestamp?: string;
 }
 
 const SPINNER_FRAMES = ['-', '\\', '|', '/'];
@@ -60,7 +60,8 @@ function formatTime(timestamp: number): string {
 }
 
 export function SessionManager(props: SessionManagerProps) {
-  let selectRef: unknown;
+  let boxRef: { focus(): void } | undefined;
+  let scrollboxRef: { scrollTop: number; scrollTo: (line: number) => void } | undefined;
 
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [deleteConfirmationId, setDeleteConfirmationId] = createSignal<string | null>(null);
@@ -71,6 +72,20 @@ export function SessionManager(props: SessionManagerProps) {
     const interval = setInterval(() => {
       setFrame(f => (f + 1) % SPINNER_FRAMES.length);
     }, 200);
+    
+    
+    setTimeout(() => {
+      boxRef?.focus();
+      
+      const items = listItems();
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type === 'session') {
+          setSelectedIndex(i);
+          break;
+        }
+      }
+    }, 50);
+    
     return () => clearInterval(interval);
   });
 
@@ -143,53 +158,39 @@ export function SessionManager(props: SessionManagerProps) {
       .filter(g => g.sessions.length > 0);
   });
 
-  const selectOptions = createMemo<SelectOption[]>(() => {
-    const options: SelectOption[] = [];
-    const maxWidth = 55;
+  const listItems = createMemo<ListItem[]>(() => {
+    const items: ListItem[] = [];
 
-    activeGroups().forEach((group) => {
-      options.push({ name: group.date, value: `header-${group.date}`, description: '', disabled: true });
+    
+    const allGroups = [...activeGroups(), ...inactiveGroups()];
+
+    allGroups.forEach((group) => {
+      
+      items.push({
+        type: 'header',
+        id: `header-${group.date}`,
+        displayText: group.date,
+      });
+
+      // Add sessions
       group.sessions.forEach((session) => {
         const showDeleteConfirm = deleteConfirmationId() === session.id;
         const prefix = showDeleteConfirm ? '[DELETE?] ' : (session.isLoading ? SPINNER_FRAMES[frame()] + ' ' : '');
         const timeStr = formatTime(session.lastActivity);
+        // sessionName without leading spaces (cursor ▶ will add 2 chars in render)
         const sessionName = `${prefix}${session.name}`;
-        const padding = Math.max(1, maxWidth - sessionName.length - timeStr.length);
-        const name = sessionName + ' '.repeat(padding) + timeStr;
-        options.push({ name, value: session.id, description: '' });
+
+        items.push({
+          type: 'session',
+          id: session.id,
+          displayText: sessionName,
+          timestamp: timeStr,
+        });
       });
     });
 
-    if (activeGroups().length > 0 && inactiveGroups().length > 0) {
-      options.push({ name: '─'.repeat(maxWidth), value: 'divider', description: '', disabled: true });
-    }
-
-    inactiveGroups().forEach((group) => {
-      options.push({ name: group.date, value: `header-${group.date}-inactive`, description: '', disabled: true });
-      group.sessions.forEach((session) => {
-        const showDeleteConfirm = deleteConfirmationId() === session.id;
-        const prefix = showDeleteConfirm ? '[DELETE?] ' : '';
-        const timeStr = formatTime(session.lastActivity);
-        const sessionName = `${prefix}${session.name}`;
-        const padding = Math.max(1, maxWidth - sessionName.length - timeStr.length);
-        const name = sessionName + ' '.repeat(padding) + timeStr;
-        options.push({ name, value: session.id, description: '' });
-      });
-    });
-
-    return options;
+    return items;
   });
-
-  const sessionIdFromIndex = (index: number): string | null => {
-    const options = selectOptions();
-    if (index >= 0 && index < options.length) {
-      const value = options[index].value;
-      if (!value.startsWith('header-') && value !== 'divider') {
-        return value;
-      }
-    }
-    return null;
-  };
 
   const activeSessionIds = createMemo(() => {
     const ids = new Set<string>();
@@ -197,39 +198,46 @@ export function SessionManager(props: SessionManagerProps) {
     return ids;
   });
 
-  // Skip disabled options when navigating
+  // Find next selectable index (skip headers)
   const findNextSelectableIndex = (startIndex: number, direction: 1 | -1): number => {
-    const options = selectOptions();
+    const items = listItems();
     let index = startIndex;
-    for (let i = 0; i < options.length; i++) {
+    for (let i = 0; i < items.length; i++) {
       index += direction;
-      if (index < 0) index = options.length - 1;
-      if (index >= options.length) index = 0;
-      if (!options[index].disabled) return index;
+      if (index < 0) index = items.length - 1;
+      if (index >= items.length) index = 0;
+      if (items[index].type === 'session') return index;
     }
     return startIndex;
   };
 
-  const handleSelectChange = (index: number) => {
-    // Don't select disabled items
-    const options = selectOptions();
-    if (options[index]?.disabled) {
-      // Find next selectable item
-      const nextIndex = findNextSelectableIndex(index, 1);
-      if (nextIndex !== index) {
-        setSelectedIndex(nextIndex);
-        return;
+  // Auto-scroll to keep selected item in view
+  createEffect(() => {
+    const idx = selectedIndex();
+    if (scrollboxRef && idx >= 0) {
+      const viewportHeight = 16;
+      const scrollTop = scrollboxRef.scrollTop;
+      const scrollBottom = scrollTop + viewportHeight - 1;
+
+      // If selected item is above viewport, scroll up (show header if possible)
+      if (idx < scrollTop) {
+        // Scroll to show the item and its header (if exists)
+        const targetScroll = Math.max(0, idx - 1);
+        scrollboxRef.scrollTo(targetScroll);
+      }
+      // If selected item is below viewport, scroll down
+      else if (idx > scrollBottom) {
+        scrollboxRef.scrollTo(idx - viewportHeight + 1);
       }
     }
-    setSelectedIndex(index);
-    setDeleteConfirmationId(null);
-  };
+  });
 
   const handleKey = (e: KeyEvent) => {
     const name = e.name?.toLowerCase();
     const ctrl = e.ctrl;
+    const items = listItems();
 
-    // Handle up/down to skip disabled items
+    // Handle up/down to skip headers
     if (name === 'up') {
       const nextIndex = findNextSelectableIndex(selectedIndex(), -1);
       if (nextIndex !== selectedIndex()) {
@@ -262,13 +270,13 @@ export function SessionManager(props: SessionManagerProps) {
     }
 
     if (ctrl && name === 'd') {
-      const sessionId = sessionIdFromIndex(selectedIndex());
-      if (sessionId) {
-        if (deleteConfirmationId() === sessionId) {
-          props.onDelete(sessionId);
+      const item = items[selectedIndex()];
+      if (item?.type === 'session') {
+        if (deleteConfirmationId() === item.id) {
+          props.onDelete(item.id);
           setDeleteConfirmationId(null);
         } else {
-          setDeleteConfirmationId(sessionId);
+          setDeleteConfirmationId(item.id);
         }
       }
       e.preventDefault();
@@ -276,19 +284,19 @@ export function SessionManager(props: SessionManagerProps) {
     }
 
     if (ctrl && name === 'r') {
-      const sessionId = sessionIdFromIndex(selectedIndex());
-      if (sessionId) {
-        props.onRename(sessionId, '');
+      const item = items[selectedIndex()];
+      if (item?.type === 'session') {
+        props.onRename(item.id, '');
       }
       e.preventDefault();
       return;
     }
 
     if (name === 'return') {
-      const sessionId = sessionIdFromIndex(selectedIndex());
-      if (sessionId) {
-        const isActive = activeSessionIds().has(sessionId);
-        props.onSelect(sessionId, isActive);
+      const item = items[selectedIndex()];
+      if (item?.type === 'session') {
+        const isActive = activeSessionIds().has(item.id);
+        props.onSelect(item.id, isActive);
       }
       e.preventDefault();
       return;
@@ -314,28 +322,19 @@ export function SessionManager(props: SessionManagerProps) {
 
   return (
     <box
+      ref={(r) => { boxRef = r as { focus(): void }; }}
       width="70%"
       minWidth={60}
       maxHeight={30}
-      border={true}
-      borderStyle="rounded"
-      borderColor={Colors.border}
-      backgroundColor="#1e1e2e"
       flexDirection="column"
       paddingLeft={2}
       paddingRight={2}
+      paddingTop={1}
+      paddingBottom={1}
+      backgroundColor="#1e1e2e"
+      focusable={true}
+      onKeyDown={handleKey}
     >
-      <box flexDirection="row" justifyContent="space-between" alignItems="center">
-        <text>
-          <span style={{ bold: true, fg: Colors.white }}>Sessions</span>
-        </text>
-        <text>
-          <span style={{ fg: Colors.muted }}>esc</span>
-        </text>
-      </box>
-
-      <box height={1} />
-
       <Show
         when={searchQuery()}
         fallback={
@@ -356,24 +355,54 @@ export function SessionManager(props: SessionManagerProps) {
 
       <box height={1} />
 
-      <select
-        ref={(r) => { 
-          selectRef = r;
-          setTimeout(() => (r as { focus(): void })?.focus(), 50);
-        }}
-        flexGrow={1}
+      <scrollbox
+        flexDirection="column"
         height={16}
-        options={selectOptions()}
-        selectedIndex={selectedIndex()}
-        onChange={handleSelectChange}
-        onKeyDown={handleKey}
-        backgroundColor="#1e1e2e"
-        textColor={Colors.light}
-        selectedBackgroundColor="#eebb99"
-        selectedTextColor="#000000"
-        focusedBackgroundColor={Colors.primaryDark}
-        focusedTextColor={Colors.white}
-      />
+        scrollbarOptions={{ visible: false }}
+        ref={(r) => { scrollboxRef = r as { scrollTop: number; scrollTo: (line: number) => void }; }}
+        focusable={false}
+      >
+        <For each={listItems()}>
+          {(item, index) => {
+            const isSelected = () => selectedIndex() === index();
+            const isHeader = () => item.type === 'header';
+
+            return (
+              <box
+                height={1}
+                backgroundColor={isSelected() && !isHeader() ? Colors.primaryDark : '#1e1e2e'}
+              >
+                {isHeader() ? (
+                  <text>
+                    <span style={{ fg: Colors.muted }}>
+                      {item.displayText}
+                    </span>
+                  </text>
+                ) : (
+                  <box flexDirection="row" justifyContent="space-between" width="100%" paddingLeft={1} paddingRight={1}>
+                    <text>
+                      <span style={{
+                        fg: isSelected() ? Colors.white : Colors.light,
+                        bold: isSelected()
+                      }}>
+                        {isSelected() ? '▶ ' : '  '}{item.displayText}
+                      </span>
+                    </text>
+                    <text>
+                      <span style={{
+                        fg: isSelected() ? Colors.white : Colors.light,
+                        bold: isSelected()
+                      }}>
+                        {item.timestamp}
+                      </span>
+                    </text>
+                  </box>
+                )}
+              </box>
+            );
+          }}
+        </For>
+      </scrollbox>
 
       <box height={1} />
 

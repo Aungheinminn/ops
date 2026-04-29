@@ -41,6 +41,7 @@ interface AppProps {
 function App(props: AppProps) {
   const dimensions = useTerminalDimensions();
   const renderer = useRenderer();
+  let inputBarRef: { focus(): void } | undefined;
 
   const [activeDialog, setActiveDialog] = createSignal<{
     type: string;
@@ -57,14 +58,14 @@ function App(props: AppProps) {
   const activeSession = createMemo(() => SessionStore.getActiveSession());
   const sessionIds = createMemo(() => Object.keys(sessions()));
 
-  // Track queue state for active session
+  
   const activeQueueState = createMemo(() => {
     const id = activeId();
     if (!id) return { steering: [], followUp: [], totalCount: 0 };
     return SessionStore.getQueueState(id);
   });
 
-  // Update queue count when queue state changes
+  
   createEffect(() => {
     const state = activeQueueState();
     setQueueCount(state.totalCount);
@@ -86,7 +87,7 @@ function App(props: AppProps) {
     return ids.indexOf(activeId() || '');
   });
 
-  // Convert sessions to SessionListItem format for SessionManager
+  
   const sessionListItems = createMemo(() => {
     const items: Record<string, any> = {};
     const allIds = allSessionIds();
@@ -104,7 +105,7 @@ function App(props: AppProps) {
           isActive: id === activeId(),
         };
       } else {
-        // Check in saved sessions
+        
         const saved = savedSessions().find(s => s.id === id);
         if (saved) {
           items[id] = {
@@ -334,10 +335,18 @@ function App(props: AppProps) {
     }
 
     setActiveDialog(null);
+    // Refocus input bar after dialog closes
+    setTimeout(() => {
+      inputBarRef?.focus();
+    }, 50);
   };
 
   const handleDialogCancel = () => {
     setActiveDialog(null);
+    // Refocus input bar after dialog closes
+    setTimeout(() => {
+      inputBarRef?.focus();
+    }, 50);
   };
 
   const handleSessionSelect = async (sessionId: string, isActiveSession: boolean) => {
@@ -357,6 +366,9 @@ function App(props: AppProps) {
       SessionStore.switchSession(sessionId);
     }
     setActiveDialog(null);
+    setTimeout(() => {
+      inputBarRef?.focus();
+    }, 50);
   };
 
   const handleSessionDelete = async (sessionId: string) => {
@@ -532,6 +544,9 @@ function App(props: AppProps) {
           queueCount={queueCount()}
           mode={inputMode()}
           onModeChange={setInputMode}
+          inputRef={(ref) => {
+            inputBarRef = ref;
+          }}
         />
       </box>
 

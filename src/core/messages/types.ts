@@ -1,11 +1,8 @@
-/**
- * Rich Message Types - Structured content blocks for messages
- * Replaces the simple string content with an array of typed content blocks
- */
+ 
 
-// ============================================================================
-// Content Block Types
-// ============================================================================
+
+
+
 
 export interface TextBlock {
   type: 'text';
@@ -29,7 +26,7 @@ export interface ToolCallBlock {
   arguments: Record<string, unknown>;
   contentIndex?: number;
   isStreaming?: boolean;
-  argumentsBuffer?: string; // Accumulated JSON string during streaming
+  argumentsBuffer?: string; 
 }
 
 export interface ToolResultBlock {
@@ -44,9 +41,9 @@ export interface ToolResultBlock {
 
 export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock;
 
-// ============================================================================
-// Rich Message Types
-// ============================================================================
+
+
+
 
 export interface BaseRichMessage {
   id: string;
@@ -77,15 +74,15 @@ export interface AssistantRichMessage extends BaseRichMessage {
 
 export type RichMessage = UserRichMessage | AssistantRichMessage;
 
-// ============================================================================
-// Utility Types
-// ============================================================================
+
+
+
 
 export type ContentBlockType = ContentBlock['type'];
 
-// ============================================================================
-// Type Guards
-// ============================================================================
+
+
+
 
 export function isTextBlock(block: ContentBlock): block is TextBlock {
   return block.type === 'text';
@@ -111,9 +108,9 @@ export function isAssistantMessage(message: RichMessage): message is AssistantRi
   return message.role === 'assistant';
 }
 
-// ============================================================================
-// Content Block Helpers
-// ============================================================================
+
+
+
 
 export function createTextBlock(content: string, contentIndex?: number): TextBlock {
   return {
@@ -166,13 +163,11 @@ export function createToolResultBlock(
   };
 }
 
-// ============================================================================
-// Content Extraction Helpers
-// ============================================================================
 
-/**
- * Get all text content from a message (concatenated)
- */
+
+
+
+ 
 export function getTextContent(message: RichMessage): string {
   return message.content
     .filter((block): block is TextBlock => block.type === 'text')
@@ -180,9 +175,7 @@ export function getTextContent(message: RichMessage): string {
     .join('');
 }
 
-/**
- * Get thinking content from a message (if any)
- */
+ 
 export function getThinkingContent(message: RichMessage): string {
   return message.content
     .filter((block): block is ThinkingBlock => block.type === 'thinking')
@@ -190,37 +183,27 @@ export function getThinkingContent(message: RichMessage): string {
     .join('');
 }
 
-/**
- * Check if message has thinking content
- */
+ 
 export function hasThinkingContent(message: RichMessage): boolean {
   return message.content.some(block => block.type === 'thinking');
 }
 
-/**
- * Check if message has tool calls
- */
+ 
 export function hasToolCalls(message: RichMessage): boolean {
   return message.content.some(block => block.type === 'tool_call');
 }
 
-/**
- * Get all tool calls from a message
- */
+ 
 export function getToolCalls(message: RichMessage): ToolCallBlock[] {
   return message.content.filter((block): block is ToolCallBlock => block.type === 'tool_call');
 }
 
-/**
- * Get all tool results from a message
- */
+ 
 export function getToolResults(message: RichMessage): ToolResultBlock[] {
   return message.content.filter((block): block is ToolResultBlock => block.type === 'tool_result');
 }
 
-/**
- * Convert rich message content to a simple string (for backwards compatibility)
- */
+ 
 export function messageContentToString(message: RichMessage): string {
   return message.content
     .map(block => {

@@ -4,12 +4,12 @@ import { homedir } from 'os';
 
 const logFile = join(homedir(), '.pi', 'ops', 'debug.log');
 
-// Clear log at startup
+
 if (existsSync(logFile)) {
   try {
     unlinkSync(logFile);
   } catch {
-    // Ignore
+    
   }
 }
 
