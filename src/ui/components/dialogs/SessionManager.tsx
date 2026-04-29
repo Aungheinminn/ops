@@ -24,6 +24,7 @@ interface SelectOption {
   name: string;
   value: string;
   description: string;
+  disabled?: boolean;
 }
 
 const SPINNER_FRAMES = ['-', '\\', '|', '/'];
@@ -145,9 +146,9 @@ export function SessionManager(props: SessionManagerProps) {
   const selectOptions = createMemo<SelectOption[]>(() => {
     const options: SelectOption[] = [];
     const maxWidth = 55;
-    
+
     activeGroups().forEach((group) => {
-      options.push({ name: group.date, value: `header-${group.date}`, description: '' });
+      options.push({ name: group.date, value: `header-${group.date}`, description: '', disabled: true });
       group.sessions.forEach((session) => {
         const showDeleteConfirm = deleteConfirmationId() === session.id;
         const prefix = showDeleteConfirm ? '[DELETE?] ' : (session.isLoading ? SPINNER_FRAMES[frame()] + ' ' : '');
@@ -160,11 +161,11 @@ export function SessionManager(props: SessionManagerProps) {
     });
 
     if (activeGroups().length > 0 && inactiveGroups().length > 0) {
-      options.push({ name: '─'.repeat(maxWidth), value: 'divider', description: '' });
+      options.push({ name: '─'.repeat(maxWidth), value: 'divider', description: '', disabled: true });
     }
 
     inactiveGroups().forEach((group) => {
-      options.push({ name: group.date, value: `header-${group.date}-inactive`, description: '' });
+      options.push({ name: group.date, value: `header-${group.date}-inactive`, description: '', disabled: true });
       group.sessions.forEach((session) => {
         const showDeleteConfirm = deleteConfirmationId() === session.id;
         const prefix = showDeleteConfirm ? '[DELETE?] ' : '';
@@ -196,7 +197,30 @@ export function SessionManager(props: SessionManagerProps) {
     return ids;
   });
 
+  // Skip disabled options when navigating
+  const findNextSelectableIndex = (startIndex: number, direction: 1 | -1): number => {
+    const options = selectOptions();
+    let index = startIndex;
+    for (let i = 0; i < options.length; i++) {
+      index += direction;
+      if (index < 0) index = options.length - 1;
+      if (index >= options.length) index = 0;
+      if (!options[index].disabled) return index;
+    }
+    return startIndex;
+  };
+
   const handleSelectChange = (index: number) => {
+    // Don't select disabled items
+    const options = selectOptions();
+    if (options[index]?.disabled) {
+      // Find next selectable item
+      const nextIndex = findNextSelectableIndex(index, 1);
+      if (nextIndex !== index) {
+        setSelectedIndex(nextIndex);
+        return;
+      }
+    }
     setSelectedIndex(index);
     setDeleteConfirmationId(null);
   };
@@ -204,6 +228,27 @@ export function SessionManager(props: SessionManagerProps) {
   const handleKey = (e: KeyEvent) => {
     const name = e.name?.toLowerCase();
     const ctrl = e.ctrl;
+
+    // Handle up/down to skip disabled items
+    if (name === 'up') {
+      const nextIndex = findNextSelectableIndex(selectedIndex(), -1);
+      if (nextIndex !== selectedIndex()) {
+        setSelectedIndex(nextIndex);
+        setDeleteConfirmationId(null);
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (name === 'down') {
+      const nextIndex = findNextSelectableIndex(selectedIndex(), 1);
+      if (nextIndex !== selectedIndex()) {
+        setSelectedIndex(nextIndex);
+        setDeleteConfirmationId(null);
+      }
+      e.preventDefault();
+      return;
+    }
 
     if (name === 'escape') {
       if (searchQuery()) {
