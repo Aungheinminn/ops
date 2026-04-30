@@ -341,7 +341,11 @@ export function createMessageStore(): MessageStore {
     },
 
     restoreMessages(messages: RichMessage[]): void {
-      setState('messages', messages);
+      setState({
+        messages,
+        currentMessageId: undefined,
+        toolExecutions: new Map(),
+      });
       log(`Restored ${messages.length} messages to store`);
     },
   };

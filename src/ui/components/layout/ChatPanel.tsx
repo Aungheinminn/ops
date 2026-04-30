@@ -10,6 +10,7 @@ interface ChatPanelProps {
   session?: SessionData;
   queueState?: { steering: readonly string[]; followUp: readonly string[]; totalCount: number };
   mode?: InputMode;
+  onUserMessageAction?: (messageId: string) => void;
 }
 
 function EmptyState() {
@@ -77,7 +78,10 @@ export function ChatPanel(props: ChatPanelProps) {
           focusable={false}
         >
           <box paddingRight={2}>
-            <MessageList messages={messages()} />
+            <MessageList
+              messages={messages()}
+              onUserMessageClick={(messageId) => props.onUserMessageAction?.(messageId)}
+            />
           </box>
         </scrollbox>
         <QueueIndicator

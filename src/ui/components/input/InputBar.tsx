@@ -12,7 +12,7 @@ interface InputBarProps {
   queueCount?: number;
   mode?: InputMode;
   onModeChange?: (mode: InputMode) => void;
-  inputRef?: (ref: { focus: () => void }) => void;
+  inputRef?: (ref: { focus: () => void; setText: (text: string) => void }) => void;
 }
 
 const SLASH_COMMANDS = getAutocompleteCommands();
@@ -259,6 +259,11 @@ export function InputBar(props: InputBarProps) {
             textarea = val;
             props.inputRef?.({
               focus: () => textarea?.focus(),
+              setText: (text: string) => {
+                textarea?.setText(text);
+                textarea!.cursorOffset = text.length;
+                checkForSlashCommand();
+              },
             });
             setTimeout(() => textarea?.focus(), 0);
           }}

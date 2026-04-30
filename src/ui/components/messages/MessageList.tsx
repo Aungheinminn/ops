@@ -7,6 +7,7 @@ import { Colors } from '../../../core/types.ts';
 
 interface MessageListProps {
   messages: RichMessage[];
+  onUserMessageClick?: (messageId: string) => void;
 }
 
 function WelcomeMessage() {
@@ -47,7 +48,7 @@ export function MessageList(props: MessageListProps) {
       <For each={props.messages}>
         {(message) => {
           if (isUserMessage(message)) {
-            return <UserMessage message={message} />;
+            return <UserMessage message={message} onClick={props.onUserMessageClick} />;
           } else if (isAssistantMessage(message)) {
             return <AssistantMessage message={message} />;
           }

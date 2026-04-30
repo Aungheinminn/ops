@@ -9,7 +9,9 @@ import type { RichMessage } from '../messages/types.ts';
 import { SessionStorage } from '../storage/session-storage.js';
 import type { PersistedSession, SessionMetadata } from '../storage/types.js';
 import { ulid } from 'ulid';
+import { execSync } from 'child_process';
 import { routeMessage, isAgentBusy, getQueueState, clearQueue } from '../queue/router.ts';
+import { getTextContent } from '../messages/types.ts';
 
 const [store, setStore] = createStore<SessionStoreState>({
   sessions: {},
@@ -159,6 +161,114 @@ class SessionStoreClass {
     this.setActiveId(data.id);
 
     return data.id;
+  }
+
+  private getMessageStoreSafe(sessionId: string): MessageStore | undefined {
+    if (!store.sessions[sessionId]) return undefined;
+    return getOrCreateMessageStore(sessionId);
+  }
+
+  private syncLegacyMessages(sessionId: string, messages: RichMessage[]): void {
+    setStore('sessions', sessionId, 'messages', () => messages.map((message) => ({
+      id: message.id,
+      role: message.role === 'assistant' ? 'agent' : 'user',
+      content: getTextContent(message),
+      timestamp: message.timestamp,
+      isStreaming: message.isStreaming,
+    } as OldMessage)));
+  }
+
+  async copyUserMessage(sessionId: string, messageId: string): Promise<{ success: boolean; message: string }> {
+    const messageStore = this.getMessageStoreSafe(sessionId);
+    if (!messageStore) {
+      return { success: false, message: 'Session not found' };
+    }
+
+    const message = messageStore.messages.find(m => m.id === messageId && m.role === 'user');
+    if (!message) {
+      return { success: false, message: 'Message not found' };
+    }
+
+    const text = getTextContent(message).trim();
+    if (!text) {
+      return { success: false, message: 'Message is empty' };
+    }
+
+    try {
+      if (process.platform === 'darwin') {
+        execSync('pbcopy', { input: text });
+        return { success: true, message: 'Copied prompt to clipboard' };
+      }
+      return { success: true, message: 'Could not copy to clipboard (not available)' };
+    } catch {
+      return { success: true, message: 'Could not copy to clipboard (not available)' };
+    }
+  }
+
+  async revertToUserMessage(sessionId: string, messageId: string): Promise<{ success: boolean; message: string; promptText?: string }> {
+    const data = store.sessions[sessionId];
+    if (!data) {
+      return { success: false, message: 'Session not found' };
+    }
+
+    if (isAgentBusy(data.session, sessionId)) {
+      await data.session.abort();
+    }
+
+    const messageStore = this.getMessageStoreSafe(sessionId);
+    if (!messageStore) {
+      return { success: false, message: 'Session not found' };
+    }
+
+    const index = messageStore.messages.findIndex(m => m.id === messageId && m.role === 'user');
+    if (index < 0) {
+      return { success: false, message: 'Message not found' };
+    }
+
+    const targetMessage = messageStore.messages[index];
+    const revertedMessages = messageStore.messages.slice(0, index);
+    messageStore.restoreMessages(revertedMessages);
+    this.syncLegacyMessages(sessionId, revertedMessages);
+    setStore('sessions', sessionId, 'lastActivity', Date.now());
+    this.clearQueue(sessionId);
+    await this.saveSessionNow(sessionId);
+
+    return { success: true, message: 'Session reverted to before that prompt', promptText: targetMessage ? getTextContent(targetMessage) : undefined };
+  }
+
+  async forkFromUserMessage(sessionId: string, messageId: string): Promise<{ success: boolean; message: string; newSessionId?: string }> {
+    const data = store.sessions[sessionId];
+    if (!data) {
+      return { success: false, message: 'Session not found' };
+    }
+
+    if (isAgentBusy(data.session, sessionId)) {
+      await data.session.abort();
+    }
+
+    const messageStore = this.getMessageStoreSafe(sessionId);
+    if (!messageStore) {
+      return { success: false, message: 'Session not found' };
+    }
+
+    const index = messageStore.messages.findIndex(m => m.id === messageId && m.role === 'user');
+    if (index < 0) {
+      return { success: false, message: 'Message not found' };
+    }
+
+    const forkMessages = messageStore.messages.slice(0, index + 1);
+    const newSessionId = ulid();
+    const newName = `Fork of ${data.name}`;
+    const createdId = await this.createSessionWithId(newSessionId, data.cwd, newName, data.session.model?.id);
+    const newMessageStore = getOrCreateMessageStore(createdId);
+    newMessageStore.restoreMessages(forkMessages);
+    this.syncLegacyMessages(createdId, forkMessages);
+    setStore('sessions', createdId, 'lastActivity', Date.now());
+    await this.saveSessionNow(createdId);
+
+    this.setActiveId(createdId);
+
+    return { success: true, message: `Forked new session: ${newName}`, newSessionId: createdId };
   }
 
   async createSessionFromSaved(savedSession: SessionData, defaultModel?: string): Promise<string | null> {

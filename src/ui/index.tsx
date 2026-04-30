@@ -10,7 +10,7 @@ import { useKeyboard } from './hooks/useKeyboard.js';
 import { parseCommand, isCommand, getCommandCategory } from './hooks/useCommands.js';
 import { ChatPanel } from './components/layout/ChatPanel.js';
 import { InputBar } from './components/input/InputBar.js';
-import { ApiKeyDialog, ModelSelector, SettingsDialog, SessionManager } from './components/dialogs/index.js';
+import { ApiKeyDialog, ModelSelector, SettingsDialog, SessionManager, MessageActionsDialog } from './components/dialogs/index.js';
 
 const DIALOG_COMMANDS = new Set([
   'login',
@@ -21,6 +21,7 @@ const DIALOG_COMMANDS = new Set([
   'tree',
   'fork',
   'resume',
+  'message-actions',
 ]);
 
 const DIRECT_AGENT_COMMANDS = new Set([
@@ -41,7 +42,7 @@ interface AppProps {
 function App(props: AppProps) {
   const dimensions = useTerminalDimensions();
   const renderer = useRenderer();
-  let inputBarRef: { focus(): void } | undefined;
+  let inputBarRef: { focus(): void; setText: (text: string) => void } | undefined;
 
   const [activeDialog, setActiveDialog] = createSignal<{
     type: string;
@@ -52,6 +53,7 @@ function App(props: AppProps) {
   const [savedSessionsLoaded, setSavedSessionsLoaded] = createSignal(false);
   const [queueCount, setQueueCount] = createSignal(0);
   const [inputMode, setInputMode] = createSignal<InputMode>('build');
+  const [messageActionTarget, setMessageActionTarget] = createSignal<{ sessionId: string; messageId: string } | null>(null);
 
   const sessions = createMemo(() => SessionStore.getSessions());
   const activeId = createMemo(() => SessionStore.getActiveId());
@@ -343,10 +345,54 @@ function App(props: AppProps) {
 
   const handleDialogCancel = () => {
     setActiveDialog(null);
+    setMessageActionTarget(null);
     // Refocus input bar after dialog closes
     setTimeout(() => {
       inputBarRef?.focus();
     }, 50);
+  };
+
+  const handleMessageAction = (messageId: string) => {
+    const sessionId = activeId();
+    if (!sessionId) return;
+    setMessageActionTarget({ sessionId, messageId });
+    setActiveDialog({ type: 'message-actions', args: '' });
+  };
+
+  const handleMessageActionComplete = async (action: 'revert' | 'fork' | 'copy') => {
+    const target = messageActionTarget();
+    if (!target) return;
+
+    let result: { success: boolean; message: string; promptText?: string } | null = null;
+
+    if (action === 'copy') {
+      result = await SessionStore.copyUserMessage(target.sessionId, target.messageId);
+    } else if (action === 'revert') {
+      result = await SessionStore.revertToUserMessage(target.sessionId, target.messageId);
+    } else if (action === 'fork') {
+      result = await SessionStore.forkFromUserMessage(target.sessionId, target.messageId);
+    }
+
+    if (result?.message) {
+      const data = activeSession();
+      if (data) {
+        await data.session.sendCustomMessage({
+          customType: 'message-action',
+          content: result.message,
+          display: true,
+        });
+      }
+    }
+
+    setActiveDialog(null);
+    setMessageActionTarget(null);
+    setTimeout(() => {
+      inputBarRef?.focus();
+    }, 50);
+
+    if (action === 'revert' && result?.promptText) {
+      inputBarRef?.setText(result.promptText);
+    }
   };
 
   const handleSessionSelect = async (sessionId: string, isActiveSession: boolean) => {
@@ -430,6 +476,19 @@ function App(props: AppProps) {
             onCancel={handleDialogCancel}
           />
         );
+
+      case 'message-actions': {
+        const target = messageActionTarget();
+        if (!target) return null;
+        return (
+          <MessageActionsDialog
+            onCopy={() => handleMessageActionComplete('copy')}
+            onRevert={() => handleMessageActionComplete('revert')}
+            onFork={() => handleMessageActionComplete('fork')}
+            onCancel={handleDialogCancel}
+          />
+        );
+      }
 
       case 'scoped-models':
       case 'tree':
@@ -536,7 +595,12 @@ function App(props: AppProps) {
     >
       {/* Main content layer - always rendered */}
       <box flexGrow={1} flexDirection="column">
-        <ChatPanel session={activeSession()} queueState={activeQueueState()} mode={inputMode()} />
+        <ChatPanel
+          session={activeSession()}
+          queueState={activeQueueState()}
+          mode={inputMode()}
+          onUserMessageAction={handleMessageAction}
+        />
         <InputBar
           onSubmit={handleInput}
           currentModel={activeSession()?.session?.model}
