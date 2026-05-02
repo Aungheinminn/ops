@@ -8,6 +8,7 @@ import type { SessionMetadata } from '../core/storage/types.js';
 import { configManager } from '../core/config.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
 import { parseCommand, isCommand, getCommandCategory } from './hooks/useCommands.js';
+import { getAgentHandler, hasAgentHandler } from '../core/commands.js';
 import { ChatPanel } from './components/layout/ChatPanel.js';
 import { InputBar } from './components/input/InputBar.js';
 import { ApiKeyDialog, ModelSelector, SettingsDialog, SessionManager, MessageActionsDialog } from './components/dialogs/index.js';
@@ -89,6 +90,15 @@ function App(props: AppProps) {
     return ids.indexOf(activeId() || '');
   });
 
+  createEffect(() => {
+    const session = activeSession();
+    if (session) {
+      setInputMode(session.mode);
+    } else {
+      setInputMode('build');
+    }
+  });
+
   
   const sessionListItems = createMemo(() => {
     const items: Record<string, any> = {};
@@ -105,6 +115,7 @@ function App(props: AppProps) {
           messages: session.messages,
           isLoading: session.isLoading,
           isActive: id === activeId(),
+          mode: session.mode,
         };
       } else {
         
@@ -118,6 +129,7 @@ function App(props: AppProps) {
             messages: [],
             isLoading: false,
             isActive: false,
+            mode: saved.mode ?? 'build',
           };
         }
       }
@@ -241,6 +253,26 @@ function App(props: AppProps) {
 
         case 'agent': {
           const cmd = parsed.cmd.toLowerCase();
+
+          if (hasAgentHandler(cmd)) {
+            const handler = getAgentHandler(cmd);
+            if (handler) {
+              const sessionData = activeSession();
+              if (sessionData) {
+                const result = await handler(sessionData, parsed.args);
+                if (result.message) {
+                  SessionStore.addMessage(id, {
+                    id: `cmd-${Date.now()}`,
+                    role: 'agent',
+                    content: result.message,
+                    timestamp: Date.now(),
+                    isStreaming: false,
+                  });
+                }
+              }
+            }
+            return;
+          }
 
           if (DIALOG_COMMANDS.has(cmd)) {
             setActiveDialog({ type: cmd, args: parsed.args });
@@ -607,7 +639,11 @@ function App(props: AppProps) {
           isStreaming={activeSession()?.isLoading}
           queueCount={queueCount()}
           mode={inputMode()}
-          onModeChange={setInputMode}
+          onModeChange={(mode) => {
+            const sessionId = activeId();
+            if (!sessionId) return;
+            SessionStore.setSessionMode(sessionId, mode, { emitNotice: true });
+          }}
           inputRef={(ref) => {
             inputBarRef = ref;
           }}

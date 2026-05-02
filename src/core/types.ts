@@ -17,12 +17,14 @@ export interface Session {
   lastActivity: number;
   messages: Message[];
   isLoading: boolean;
+  mode: InputMode;
 }
 
 export interface SessionData extends Session {
   session: import('@mariozechner/pi-coding-agent').AgentSession;
   services: import('@mariozechner/pi-coding-agent').AgentSessionServices;
   unsubscribe: () => void;
+  previousTools?: string[];
 }
 
 export interface SessionSummary {

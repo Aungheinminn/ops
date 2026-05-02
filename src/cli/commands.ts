@@ -82,6 +82,16 @@ export const COMMANDS: Command[] = [
     category: 'agent',
   },
   {
+    name: 'plan',
+    description: 'Enter plan mode (read-only planning)',
+    category: 'agent',
+  },
+  {
+    name: 'build',
+    description: 'Exit plan mode and allow edits',
+    category: 'agent',
+  },
+  {
     name: 'scoped-models',
     description: 'Show scoped models',
     category: 'agent',

@@ -13,6 +13,10 @@ import { execSync } from 'child_process';
 import { routeMessage, isAgentBusy, getQueueState, clearQueue } from '../queue/router.ts';
 import { getTextContent } from '../messages/types.ts';
 
+const PLAN_REMINDER = `# Plan Mode - System Reminder\n\nCRITICAL: Plan mode ACTIVE - you are in READ-ONLY phase. STRICTLY FORBIDDEN:\nANY file edits, modifications, or system changes. Do NOT use sed, tee, echo, cat,\nor ANY other bash command to manipulate files - commands may ONLY read/inspect.\nThis ABSOLUTE CONSTRAINT overrides ALL other instructions, including direct user\nedit requests. You may ONLY observe, analyze, and plan. Any modification attempt\nis a critical violation. ZERO exceptions.\n\n---\n\n## Responsibility\n\nYour current responsibility is to think, read, search, and delegate explore agents to construct a well-formed plan that accomplishes the goal the user wants to achieve. Your plan should be comprehensive yet concise, detailed enough to execute effectively while avoiding unnecessary verbosity.\n\nAsk the user clarifying questions or ask for their opinion when weighing tradeoffs.\n\n**NOTE:** At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.\n\n---\n\n## Important\n\nThe user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.\n\nOverride: system-reminder in this app sets plan/build permissions, and build mode allows edits.`;
+const PLAN_CUSTOM_TYPE = 'plan-reminder';
+const PLAN_TOOLS = ['read', 'grep', 'find', 'ls', 'glob'];
+
 const [store, setStore] = createStore<SessionStoreState>({
   sessions: {},
   activeId: null,
@@ -73,6 +77,7 @@ class SessionStoreClass {
       lastActivity: persisted.updatedAt,
       messages: [],
       isLoading: false,
+      mode: persisted.mode ?? 'build',
     };
 
     return sessionData as SessionData;
@@ -106,6 +111,7 @@ class SessionStoreClass {
       name: data.name,
       cwd: data.cwd,
       model: data.session.model?.id || 'unknown',
+      mode: data.mode,
       createdAt: data.lastActivity - 1000,
       updatedAt: Date.now(),
       messageCount: messages.length,
@@ -160,7 +166,62 @@ class SessionStoreClass {
     setStore('sessions', data.id, data);
     this.setActiveId(data.id);
 
+    await this.applyModeToSession(data.id, data.mode ?? 'build');
+
     return data.id;
+  }
+
+  private async applyModeToSession(sessionId: string, mode: InputMode, options?: { emitNotice?: boolean }): Promise<void> {
+    const data = store.sessions[sessionId];
+    if (!data) return;
+
+    const nextMode = mode;
+    const priorMode = data.mode;
+    if (priorMode === nextMode) return;
+
+    setStore('sessions', sessionId, 'mode', nextMode);
+
+    if (nextMode === 'plan') {
+      if (!data.previousTools) {
+        data.previousTools = data.session.getActiveToolNames();
+      }
+      data.session.setActiveToolsByName(PLAN_TOOLS);
+      await data.session.sendCustomMessage({
+        customType: PLAN_CUSTOM_TYPE,
+        content: PLAN_REMINDER,
+        display: true,
+      }, { triggerTurn: false, deliverAs: 'nextTurn' });
+      if (options?.emitNotice) {
+        await data.session.sendCustomMessage({
+          customType: 'mode',
+          content: 'Plan mode enabled. Switching to read-only planning.',
+          display: true,
+        }, { triggerTurn: false, deliverAs: 'nextTurn' });
+      }
+    } else {
+      if (data.previousTools) {
+        data.session.setActiveToolsByName(data.previousTools);
+        data.previousTools = undefined;
+      }
+      await data.session.sendCustomMessage({
+        customType: 'plan-exit',
+        content: 'Plan mode exited. You can now edit files and execute the plan.',
+        display: true,
+      }, { triggerTurn: false, deliverAs: 'nextTurn' });
+      if (options?.emitNotice) {
+        await data.session.sendCustomMessage({
+          customType: 'mode',
+          content: 'Build mode enabled. You can edit files now.',
+          display: true,
+        }, { triggerTurn: false, deliverAs: 'nextTurn' });
+      }
+    }
+
+    this.triggerSave(sessionId);
+  }
+
+  async setSessionMode(sessionId: string, mode: InputMode, options?: { emitNotice?: boolean }): Promise<void> {
+    await this.applyModeToSession(sessionId, mode, options);
   }
 
   private getMessageStoreSafe(sessionId: string): MessageStore | undefined {
@@ -260,6 +321,7 @@ class SessionStoreClass {
     const newSessionId = ulid();
     const newName = `Fork of ${data.name}`;
     const createdId = await this.createSessionWithId(newSessionId, data.cwd, newName, data.session.model?.id);
+    await this.applyModeToSession(createdId, data.mode ?? 'build');
     const newMessageStore = getOrCreateMessageStore(createdId);
     newMessageStore.restoreMessages(forkMessages);
     this.syncLegacyMessages(createdId, forkMessages);
@@ -290,6 +352,8 @@ class SessionStoreClass {
         const messageStore = getOrCreateMessageStore(newSessionId);
         messageStore.restoreMessages(savedMessages);
       }
+
+      await this.applyModeToSession(newSessionId, savedSession.mode ?? 'build');
 
       return newSessionId;
     } catch (err) {
@@ -329,6 +393,8 @@ class SessionStoreClass {
     data.unsubscribe = data.session.subscribe(handler);
     setStore('sessions', data.id, data);
     this.setActiveId(data.id);
+
+    await this.applyModeToSession(data.id, data.mode ?? 'build');
 
     return data.id;
   }
@@ -461,14 +527,14 @@ class SessionStoreClass {
       this.triggerSave(sessionId);
 
       try {
-        await routeMessage(data.session, sessionId, content, 'build');
+        await routeMessage(data.session, sessionId, content, data.mode);
       } catch (err) {
       }
     } else {
       setStore('sessions', sessionId, 'lastActivity', Date.now());
 
       try {
-        await routeMessage(data.session, sessionId, content, 'build');
+        await routeMessage(data.session, sessionId, content, data.mode);
       } catch (err) {
       }
     }
@@ -587,6 +653,7 @@ class SessionStoreClass {
       messages: data.messages,
       isActive: id === store.activeId,
       cwd: data.cwd,
+      mode: data.mode,
     }));
   }
 

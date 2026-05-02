@@ -5,6 +5,7 @@ export interface PersistedSession {
   name: string;
   cwd: string;
   model: string;
+  mode?: 'plan' | 'build';
   createdAt: number;
   updatedAt: number;
   messageCount: number;
@@ -16,6 +17,7 @@ export interface SessionMetadata {
   name: string;
   cwd: string;
   model: string;
+  mode?: 'plan' | 'build';
   createdAt: number;
   updatedAt: number;
   messageCount: number;

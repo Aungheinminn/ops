@@ -14,6 +14,11 @@ export type SessionCommandHandler = (
   args: string
 ) => Promise<HandlerResult>;
 
+export type AgentCommandHandler = (
+  session: SessionData,
+  args: string
+) => Promise<HandlerResult>;
+
 export const handleExport: SessionCommandHandler = async (session, args) => {
   const path = args || `./session-${session.id}.html`;
   
@@ -166,6 +171,34 @@ export const handleRename: SessionCommandHandler = async (session, args) => {
   };
 };
 
+export const handlePlanMode: AgentCommandHandler = async (session, _args) => {
+  if (session.mode === 'plan') {
+    return {
+      success: true,
+      message: 'Already in plan mode.',
+    };
+  }
+  await SessionStore.setSessionMode(session.id, 'plan', { emitNotice: true });
+  return {
+    success: true,
+    message: undefined,
+  };
+};
+
+export const handleBuildMode: AgentCommandHandler = async (session, _args) => {
+  if (session.mode === 'build') {
+    return {
+      success: true,
+      message: 'Already in build mode.',
+    };
+  }
+  await SessionStore.setSessionMode(session.id, 'build', { emitNotice: true });
+  return {
+    success: true,
+    message: undefined,
+  };
+};
+
 export const SESSION_COMMAND_HANDLERS: Record<string, SessionCommandHandler> = {
   export: handleExport,
   copy: handleCopy,
@@ -177,10 +210,23 @@ export const SESSION_COMMAND_HANDLERS: Record<string, SessionCommandHandler> = {
   rename: handleRename,
 };
 
+export const AGENT_COMMAND_HANDLERS: Record<string, AgentCommandHandler> = {
+  plan: handlePlanMode,
+  build: handleBuildMode,
+};
+
 export function hasSessionHandler(command: string): boolean {
   return command in SESSION_COMMAND_HANDLERS;
 }
 
 export function getSessionHandler(command: string): SessionCommandHandler | undefined {
   return SESSION_COMMAND_HANDLERS[command];
+}
+
+export function hasAgentHandler(command: string): boolean {
+  return command in AGENT_COMMAND_HANDLERS;
+}
+
+export function getAgentHandler(command: string): AgentCommandHandler | undefined {
+  return AGENT_COMMAND_HANDLERS[command];
 }

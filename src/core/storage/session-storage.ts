@@ -97,6 +97,7 @@ export class SessionStorage {
               name: session.name,
               cwd: session.cwd,
               model: session.model,
+              mode: session.mode,
               createdAt: session.createdAt,
               updatedAt: session.updatedAt,
               messageCount: session.messageCount,

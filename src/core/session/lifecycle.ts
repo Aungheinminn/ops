@@ -90,18 +90,19 @@ async function createSessionInternal(
 
     const messageStore = getOrCreateMessageStore(sessionId);
 
-    const data: SessionData & { messageStore: MessageStore } = {
-      id: sessionId,
-      session,
-      services,
-      name: sessionName,
-      cwd,
-      lastActivity: Date.now(),
-      messages: [],
-      unsubscribe: () => {},
-      isLoading: false,
-      messageStore,
-    };
+  const data: SessionData & { messageStore: MessageStore } = {
+    id: sessionId,
+    session,
+    services,
+    name: sessionName,
+    cwd,
+    lastActivity: Date.now(),
+    messages: [],
+    unsubscribe: () => {},
+    isLoading: false,
+    mode: 'build',
+    messageStore,
+  };
 
     return data;
   } catch (err) {
