@@ -7,6 +7,19 @@ interface ToolCallBlockProps {
 
 const SIMPLE_TOOLS = ['read', 'bash', 'grep', 'find', 'ls'];
 const COMPLEX_TOOLS = ['edit', 'write'];
+const TOOL_LEFT_BORDER_CHARS = {
+  topLeft: '┌',
+  topRight: '┐',
+  bottomLeft: '└',
+  bottomRight: '┘',
+  horizontal: '─',
+  vertical: '▎',
+  topT: '┬',
+  bottomT: '┴',
+  leftT: '├',
+  rightT: '┤',
+  cross: '┼',
+};
 
 function getIcon(name: string): string {
   const icons: Record<string, string> = {
@@ -103,8 +116,10 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
       <box
         flexDirection="column"
         marginY={1}
+        marginLeft={-2}
         border={['left']}
         borderStyle="single"
+        customBorderChars={TOOL_LEFT_BORDER_CHARS}
         borderColor={Colors.border}
         paddingLeft={1}
         paddingRight={1}
@@ -131,8 +146,10 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
     <box
       flexDirection="column"
       marginY={1}
+      marginLeft={-2}
       border={['left']}
       borderStyle="single"
+      customBorderChars={TOOL_LEFT_BORDER_CHARS}
       borderColor={Colors.border}
       paddingLeft={1}
       paddingRight={1}
