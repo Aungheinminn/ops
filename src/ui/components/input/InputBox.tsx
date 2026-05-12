@@ -5,7 +5,7 @@ import { Colors } from '../../../core/types.js';
 import type { KeyEvent, TextareaRenderable, ScrollBoxRenderable } from '@opentui/core';
 import { getAutocompleteCommands } from '../../../cli/commands.js';
 
-interface InputBarProps {
+interface InputBoxProps {
   onSubmit: (text: string, mode: InputMode, options?: { forceSteer?: boolean; forceFollowUp?: boolean }) => void;
   currentModel?: { id: string };
   isStreaming?: boolean;
@@ -17,7 +17,7 @@ interface InputBarProps {
 
 const SLASH_COMMANDS = getAutocompleteCommands();
 
-export function InputBar(props: InputBarProps) {
+export function InputBox(props: InputBoxProps) {
   let textarea: TextareaRenderable | undefined;
   let commandScroll: ScrollBoxRenderable | undefined;
   

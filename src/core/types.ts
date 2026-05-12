@@ -46,7 +46,7 @@ export interface SidebarState {
   selectedIndex: number;
 }
 
-export interface InputBarState {
+export interface InputBoxState {
   showCommands: boolean;
   commandFilter: string;
   selectedCommand: number;

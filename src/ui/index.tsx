@@ -10,7 +10,7 @@ import { useKeyboard } from './hooks/useKeyboard.js';
 import { parseCommand, isCommand, getCommandCategory } from './hooks/useCommands.js';
 import { getAgentHandler, hasAgentHandler } from '../core/commands.js';
 import { ChatPanel } from './components/layout/ChatPanel.js';
-import { InputBar } from './components/input/InputBar.js';
+import { InputBox } from './components/input/InputBox.js';
 import { ApiKeyDialog, ModelSelector, SettingsDialog, SessionManager, MessageActionsDialog } from './components/dialogs/index.js';
 
 const DIALOG_COMMANDS = new Set([
@@ -633,7 +633,7 @@ function App(props: AppProps) {
           mode={inputMode()}
           onUserMessageAction={handleMessageAction}
         />
-        <InputBar
+        <InputBox
           onSubmit={handleInput}
           currentModel={activeSession()?.session?.model}
           isStreaming={activeSession()?.isLoading}

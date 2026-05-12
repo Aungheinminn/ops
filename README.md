@@ -136,7 +136,7 @@ src/
     │   └── useNavigation.ts # Sidebar navigation state
     └── components/
         ├── input/
-        │   └── InputBar.tsx  # Text input with autocomplete
+        │   └── InputBox.tsx  # Text input with autocomplete
         └── layout/
             ├── ChatPanel.tsx  # Chat display area
             └── Sidebar.tsx    # Session list sidebar
