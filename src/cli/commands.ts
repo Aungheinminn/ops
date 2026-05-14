@@ -151,11 +151,6 @@ export const COMMANDS: Command[] = [
     description: 'Logout from OAuth provider',
     category: 'agent',
   },
-  {
-    name: 'session',
-    description: 'Show session info and stats',
-    category: 'agent',
-  },
 ];
 
 const buildCommandMap = (): Map<string, Command> => {

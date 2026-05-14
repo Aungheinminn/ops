@@ -77,12 +77,10 @@ export function ChatPanel(props: ChatPanelProps) {
           stickyStart="bottom"
           focusable={false}
         >
-          <box paddingRight={2}>
-            <MessageList
+          <MessageList
               messages={messages()}
               onUserMessageClick={(messageId) => props.onUserMessageAction?.(messageId)}
             />
-          </box>
         </scrollbox>
         <QueueIndicator
           queueState={props.queueState ?? { steering: [], followUp: [], totalCount: 0 }}
