@@ -72,6 +72,7 @@ function formatComplexToolContent(name: string, args: Record<string, unknown>): 
 export function ToolCallBlock(props: ToolCallBlockProps) {
   const { name, arguments: args, isStreaming } = props.block;
   const [expanded, setExpanded] = createSignal(false);
+  const [hovered, setHovered] = createSignal(false);
 
   const toggleExpanded = (event: MouseEvent) => {
     if (event.button !== 0) return;
@@ -108,9 +109,12 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
           borderStyle="single"
           customBorderChars={TOOL_LEFT_BORDER_CHARS}
           borderColor={Colors.border}
+          backgroundColor={hovered() ? '#1e293b' : undefined}
           paddingLeft={1}
           paddingRight={1}
           onMouseUp={toggleExpanded}
+          onMouseOver={() => setHovered(true)}
+          onMouseOut={() => setHovered(false)}
         >
           <text>
             <span style={{ fg: Colors.light, bold: true }}>
