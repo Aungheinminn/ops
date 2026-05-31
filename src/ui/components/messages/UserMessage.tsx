@@ -29,7 +29,7 @@ export function UserMessage(props: UserMessageProps) {
   return (
     <box
       flexDirection="row"
-      padding={1}
+      paddingY={1}
       width="100%"
       backgroundColor={hovered() ? '#1e293b' : undefined}
       onMouseUp={handleMouseUp}

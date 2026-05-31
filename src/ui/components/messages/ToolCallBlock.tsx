@@ -1,3 +1,5 @@
+import { Show, createSignal } from 'solid-js';
+import type { MouseEvent } from '@opentui/core';
 import { Colors } from '../../../core/types.ts';
 import type { ToolCallBlock as ToolCallBlockType } from '../../../core/messages/types.ts';
 
@@ -20,19 +22,6 @@ const TOOL_LEFT_BORDER_CHARS = {
   rightT: '┤',
   cross: '┼',
 };
-
-function getIcon(name: string): string {
-  const icons: Record<string, string> = {
-    write: '📝',
-    edit: '✏️',
-    bash: '⚡',
-    read: '📖',
-    grep: '🔍',
-    find: '🔎',
-    ls: '📁',
-  };
-  return icons[name] || '🔧';
-}
 
 function getFilePath(args: Record<string, unknown>): string {
   return String(args.path || 'unknown');
@@ -82,30 +71,29 @@ function formatComplexToolContent(name: string, args: Record<string, unknown>): 
 
 export function ToolCallBlock(props: ToolCallBlockProps) {
   const { name, arguments: args, isStreaming } = props.block;
-  const icon = getIcon(name);
+  const [expanded, setExpanded] = createSignal(false);
+
+  const toggleExpanded = (event: MouseEvent) => {
+    if (event.button !== 0) return;
+    setExpanded((v) => !v);
+  };
 
   if (isStreaming) {
     return (
-      <box flexDirection="row" marginY={1}>
-        <text>{icon}</text>
-        <box paddingLeft={1}>
-          <text style={{ fg: Colors.muted }}>
-            Calling {name}...
-          </text>
-        </box>
+      <box marginY={1}>
+        <text style={{ fg: Colors.muted }}>
+          Calling {name}...
+        </text>
       </box>
     );
   }
 
   if (SIMPLE_TOOLS.includes(name)) {
     return (
-      <box flexDirection="row" marginY={1}>
-        <text>{icon}</text>
-        <box paddingLeft={1}>
-          <text style={{ fg: Colors.light }}>
-            {formatSimpleTool(name, args)}
-          </text>
-        </box>
+      <box marginY={1}>
+        <text style={{ fg: Colors.light }}>
+          {formatSimpleTool(name, args)}
+        </text>
       </box>
     );
   }
@@ -113,9 +101,36 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
   if (COMPLEX_TOOLS.includes(name)) {
     const content = formatComplexToolContent(name, args);
     return (
+      <box flexDirection="column" marginY={1}>
+        <box
+          marginLeft={-2}
+          border={['left']}
+          borderStyle="single"
+          customBorderChars={TOOL_LEFT_BORDER_CHARS}
+          borderColor={Colors.border}
+          paddingLeft={1}
+          paddingRight={1}
+          onMouseUp={toggleExpanded}
+        >
+          <text>
+            <span style={{ fg: Colors.light, bold: true }}>
+              {name}: {getFilePath(args)}
+            </span>
+          </text>
+        </box>
+        <Show when={expanded()}>
+          <box paddingTop={1} paddingLeft={1}>
+            <text style={{ fg: Colors.light }}>{content}</text>
+          </box>
+        </Show>
+      </box>
+    );
+  }
+
+  const content = JSON.stringify(args, null, 2);
+  return (
+    <box flexDirection="column" marginY={1}>
       <box
-        flexDirection="column"
-        marginY={1}
         marginLeft={-2}
         border={['left']}
         borderStyle="single"
@@ -124,45 +139,11 @@ export function ToolCallBlock(props: ToolCallBlockProps) {
         paddingLeft={1}
         paddingRight={1}
       >
-        <box flexDirection="row">
-          <text>{icon}</text>
-          <box paddingLeft={1}>
-            <text>
-              <span style={{ fg: Colors.light, bold: true }}>
-                {name}: {getFilePath(args)}
-              </span>
-            </text>
-          </box>
-        </box>
-        <box paddingTop={1}>
-          <text style={{ fg: Colors.light }}>{content}</text>
-        </box>
+        <text>
+          <span style={{ fg: Colors.light, bold: true }}>{name}</span>
+        </text>
       </box>
-    );
-  }
-
-  const content = JSON.stringify(args, null, 2);
-  return (
-    <box
-      flexDirection="column"
-      marginY={1}
-      marginLeft={-2}
-      border={['left']}
-      borderStyle="single"
-      customBorderChars={TOOL_LEFT_BORDER_CHARS}
-      borderColor={Colors.border}
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      <box flexDirection="row">
-        <text>{icon}</text>
-        <box paddingLeft={1}>
-          <text>
-            <span style={{ fg: Colors.light, bold: true }}>{name}</span>
-          </text>
-        </box>
-      </box>
-      <box paddingTop={1}>
+      <box paddingTop={1} paddingLeft={1}>
         <text style={{ fg: Colors.light }}>{content}</text>
       </box>
     </box>

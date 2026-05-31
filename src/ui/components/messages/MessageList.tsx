@@ -41,7 +41,7 @@ function WelcomeMessage() {
 
 export function MessageList(props: MessageListProps) {
   return (
-    <box flexDirection="column" width="100%">
+    <box flexDirection="column" width="100%" paddingLeft={1}>
       <Show when={props.messages.length === 0}>
         <WelcomeMessage />
       </Show>

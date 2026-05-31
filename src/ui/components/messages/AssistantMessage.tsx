@@ -47,7 +47,7 @@ export function AssistantMessage(props: AssistantMessageProps) {
   };
 
   return (
-    <box flexDirection="row" padding={1}>
+    <box flexDirection="row" paddingY={1}>
       <text style={{ fg: Colors.success }}>▎</text>
       <box paddingLeft={1} flexGrow={1} flexDirection="column">
         <Show when={loadingText()}>
